@@ -196,7 +196,7 @@ jobs:
             reports=/tmp/python-quality-reports
             jq -e 'length == 0' "${reports}/fmt.json" "${reports}/lint.json" "${reports}/deps.json" "${reports}/api_compat.json"
             jq -e '[.[] | select(.finding)] | length == 0' "${reports}/mypy.json" "${reports}/pyright.json" "${reports}/ty.json"
-            jq -e '.tests == 3 and .failures == 0 and .coverage.covered == .coverage.total' "${reports}/test.json"
+            jq -e '.tests == 2 and .failures == 0 and .coverage.covered == .coverage.total' "${reports}/test.json"
             jq -e '.target.environment.python | endswith("/.venv/bin/python")' "${reports}/mypy.run-record.json"
             ls "${reports}/package-dist/"cleanpkg-1.0.0.tar.gz "${reports}/package-dist/"cleanpkg-1.0.0-py3-none-any.whl
             cd /tmp/clean

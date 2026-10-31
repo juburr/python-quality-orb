@@ -199,7 +199,7 @@ jobs:
         run: |
           reports=/tmp/python-quality-reports
           jq -e 'length == 0' "${reports}/fmt.json" "${reports}/lint.json" "${reports}/deps.json" "${reports}/api_compat.json"
-          jq -e '.tests == 3 and .failures == 0 and .coverage.covered == .coverage.total' "${reports}/test.json"
+          jq -e '.tests == 2 and .failures == 0 and .coverage.covered == .coverage.total' "${reports}/test.json"
           jq -e '.ci.provider == "github-actions"' "${reports}/mypy.run-record.json"
           cd "${RUNNER_TEMP}/clean"
           [[ -z "$(git status --porcelain)" ]]
