@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="test" errors="1" failures="1" skipped="1" tests="4">
+<testcase classname="tests.test_demo" name="test_one" file="tests/test_demo.py" line="2"/>
+<testcase classname="tests.test_demo" name="test_two" file="tests/test_demo.py" line="6"><failure message="AssertionError: assert 2 == 3">def test_two():
+&gt;       assert add(1, 1) == 3
+E       AssertionError: assert 2 == 3</failure></testcase>
+<testcase classname="tests.test_other" name="test_three" file="tests/test_other.py" line="2"><error message="failed on setup with &quot;fixture 'db' not found&quot;">fixture 'db' not found</error></testcase>
+<testcase classname="tests.test_other" name="test_four" file="tests/test_other.py" line="9"><skipped message="needs a network"/></testcase>
+</testsuite></testsuites>

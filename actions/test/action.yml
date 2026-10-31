@@ -1,0 +1,145 @@
+name: Run Python tests with pytest and coverage
+description: >
+  Runs a project's tests with pytest, in the project's own environment (python
+  -m pytest), where pytest, the project and its dependencies are installed, and
+  with coverage, measured by coverage.py there too. Failed and erroring tests,
+  too many warnings (--max-warnings), and coverage below coverage_min or the
+  project's own fail_under fail the step; so does a run pytest couldn't complete
+  (such as a test module that doesn't import), or one that collected no test. On
+  CircleCI with parallelism, split_tests gives each node its share of the test
+  files by the timings of earlier runs. Writes pytest's JUnit report, a summary
+  as JSON, and with coverage its JSON, Cobertura XML and text reports. The
+  GitHub Actions twin of the orb's test command.
+author: juburr
+
+inputs:
+  working_dir:
+    description: >
+      The directory to run in, which should be the project's root (pytest's
+      rootdir). paths, environment and coverage_config are relative to it.
+    default: .
+  paths:
+    description: >
+      The test files and directories to run, separated by commas or spaces. Leave
+      empty for pytest's own choice: its testpaths setting, or the working
+      directory.
+    default: ""
+  environment:
+    description: >
+      The project's environment, with pytest, the project and its dependencies
+      installed: a directory such as .venv, or an interpreter such as
+      .venv/bin/python, relative to the working directory. Create it in an earlier
+      step, such as with uv sync, poetry install, or python -m venv and pip install.
+    default: .venv
+  coverage:
+    description: >
+      Measure coverage with coverage.py (python -m coverage run -m pytest), which
+      must be installed in the environment. The project's coverage configuration
+      (.coveragerc, [tool.coverage] in pyproject.toml, setup.cfg or tox.ini)
+      applies.
+    default: "false"
+  coverage_source:
+    description: >
+      The packages or directories to measure, separated by commas or spaces
+      (coverage run --source). Leave empty for the project's coverage configuration.
+    default: ""
+  coverage_min:
+    description: >
+      The lowest coverage that passes, as a percentage such as 80 or 92.5, counting
+      lines and, with branch coverage on, branches. It is compared in whole numbers,
+      never rounded. It replaces the project's fail_under; leave empty to apply that
+      one.
+    default: ""
+  coverage_config:
+    description: >
+      A coverage.py configuration file to use instead of the one it finds.
+    default: ""
+  split_tests:
+    description: >
+      With CircleCI's parallelism, run this node's share of the test files, split by
+      the timings of earlier runs (circleci tests split --split-by=timings
+      --timings-type=filename), which come from the JUnit report stored with
+      store_test_results. coverage_min can't be checked across nodes.
+    default: "false"
+  allow_empty:
+    description: >
+      Pass when pytest collects no test, instead of failing.
+    default: "false"
+  extra_args:
+    description: >
+      Further options for pytest and its plugins, such as -x, -k "not slow", -n=4 or
+      --max-warnings=0. They are split like shell words, but nothing in them is
+      expanded or run. Give a plugin's option and its value as --option=value.
+      Options the command sets itself, and those that would collect without running
+      or stop for a debugger, are refused.
+    default: ""
+  report_name:
+    description: >
+      The reports' file name without its extension: <report_name>.json (the counts
+      and the tests that failed), and with coverage <report_name>.coverage.json,
+      .coverage.xml and .coverage.txt. The JUnit report is
+      output_dir/junit/<report_name>.xml. Letters, digits, '.', '_' and '-'.
+    default: test
+  output_dir:
+    description: >
+      Absolute path of the directory to write the reports into.
+    default: /tmp/python-quality-reports
+  junit:
+    description: >
+      Write pytest's JUnit report to output_dir/junit/<report_name>.xml.
+    default: "true"
+  run_record:
+    description: >
+      Also write a run record (<report_name>.run-record.json): what was checked,
+      with which tool and settings, and what it found.
+    default: "false"
+  store_artifacts:
+    description: >
+      Upload output_dir as a workflow artifact named
+      python-quality-reports-<report_name>-<random>, including when the step fails.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Artifact names must be unique in a workflow run, and the same command
+    # can run in several jobs or matrix legs, so the name ends in a random
+    # suffix.
+    - name: Name the reports artifact
+      id: artifact
+      if: (inputs.store_artifacts == 'true' || inputs.store_artifacts == '1')
+      shell: bash
+      env:
+        REPORT_NAME: ${{ inputs.report_name }}
+      run: |
+        if [[ ! "${REPORT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            REPORT_NAME=reports
+        fi
+        printf 'name=python-quality-reports-%s-%s\n' "${REPORT_NAME}" "$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')" >> "${GITHUB_OUTPUT}"
+    - name: pytest
+      shell: bash
+      working-directory: ${{ inputs.working_dir }}
+      env:
+        PARAM_ALLOW_EMPTY: ${{ inputs.allow_empty }}
+        PARAM_COVERAGE: ${{ inputs.coverage }}
+        PARAM_COVERAGE_CONFIG: ${{ inputs.coverage_config }}
+        PARAM_COVERAGE_MIN: ${{ inputs.coverage_min }}
+        PARAM_COVERAGE_SOURCE: ${{ inputs.coverage_source }}
+        PARAM_ENVIRONMENT: ${{ inputs.environment }}
+        PARAM_EXTRA_ARGS: ${{ inputs.extra_args }}
+        PARAM_JUNIT: ${{ inputs.junit }}
+        PARAM_OUTPUT_DIR: ${{ inputs.output_dir }}
+        PARAM_PATHS: ${{ inputs.paths }}
+        PARAM_REPORT_NAME: ${{ inputs.report_name }}
+        PARAM_RUN_RECORD: ${{ inputs.run_record }}
+        PARAM_SPLIT_TESTS: ${{ inputs.split_tests }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/test.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh" "SCRIPT_PYTHON_QUALITY_PY=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.py"
+    - name: Upload the reports
+      if: always() && (inputs.store_artifacts == 'true' || inputs.store_artifacts == '1')
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: ${{ inputs.output_dir }}
+        if-no-files-found: ignore

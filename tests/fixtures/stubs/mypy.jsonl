@@ -1,0 +1,3 @@
+{"file": "src/demo/__init__.py", "line": 5, "column": 11, "end_line": 5, "end_column": 16, "message": "Incompatible return value type (got \"int\", expected \"str\")", "hint": null, "code": "return-value", "severity": "error"}
+{"file": "src/demo/util.py", "line": 1, "column": 0, "end_line": 1, "end_column": 11, "message": "Library stubs not installed for \"yaml\"", "hint": "Hint: \"python3 -m pip install types-PyYAML\"", "code": "import-untyped", "severity": "error"}
+{"file": "src/demo/util.py", "line": 9, "column": 4, "end_line": 9, "end_column": 20, "message": "Revealed type is \"builtins.int\"", "hint": null, "code": "misc", "severity": "note"}

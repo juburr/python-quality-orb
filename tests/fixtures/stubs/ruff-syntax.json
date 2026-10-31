@@ -1,0 +1,15 @@
+[
+  {
+    "cell": null,
+    "code": "invalid-syntax",
+    "end_location": {"column": 6, "row": 2},
+    "filename": "@JOB@/src/demo/broken.py",
+    "fix": null,
+    "location": {"column": 5, "row": 2},
+    "message": "SyntaxError: Expected an expression",
+    "name": "invalid-syntax",
+    "noqa_row": null,
+    "severity": "error",
+    "url": null
+  }
+]

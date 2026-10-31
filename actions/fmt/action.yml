@@ -1,0 +1,109 @@
+name: Check Python formatting with Ruff
+description: >
+  Checks that Python code is formatted as Ruff's formatter formats it (ruff
+  format --check), without changing any file. A file the formatter would change
+  is a finding, which fails the step unless report_only is true; a file Ruff
+  couldn't format (one it can't parse or read), or no Python file to check,
+  fails it either way. Ruff's configuration (ruff.toml, .ruff.toml or
+  [tool.ruff] in pyproject.toml) applies; the job's RUFF_* variables don't.
+  Writes the findings as JSON, SARIF and JUnit, and the changes as a diff. Run
+  the install action (tools: ruff) first. The GitHub Actions twin of the orb's
+  fmt command.
+author: juburr
+
+inputs:
+  working_dir:
+    description: >
+      The directory to run in. paths and config are relative to it.
+    default: .
+  paths:
+    description: >
+      The files and directories to check, separated by commas or spaces. Leave empty
+      for Ruff's default: the working directory, as its include and exclude settings
+      select.
+    default: ""
+  config:
+    description: >
+      A Ruff configuration file to use instead of the one Ruff finds.
+    default: ""
+  allow_empty:
+    description: >
+      Pass when Ruff finds no Python file to check, instead of failing.
+    default: "false"
+  extra_args:
+    description: >
+      Further options for ruff format, such as --line-length=100 or --preview. They
+      are split like shell words, but nothing in them is expanded or run. Options
+      the command sets itself, and those that would write files, hide Ruff's
+      warnings or report elsewhere, are refused.
+    default: ""
+  report_name:
+    description: >
+      The reports' file name without its extension: <report_name>.json (the files
+      Ruff would reformat), <report_name>.sarif and <report_name>.diff. Letters,
+      digits, '.', '_' and '-'.
+    default: fmt
+  output_dir:
+    description: >
+      Absolute path of the directory to write the reports into.
+    default: /tmp/python-quality-reports
+  junit:
+    description: >
+      Write the findings as JUnit (output_dir/junit/<report_name>.xml).
+    default: "true"
+  run_record:
+    description: >
+      Also write a run record (<report_name>.run-record.json): what was checked,
+      with which tool and settings, and what it found.
+    default: "false"
+  report_only:
+    description: >
+      Report findings without failing the step, to adopt the check gradually. A
+      check that couldn't run, or that checked nothing, still fails it.
+    default: "false"
+  store_artifacts:
+    description: >
+      Upload output_dir as a workflow artifact named
+      python-quality-reports-<report_name>-<random>, including when the step fails.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Artifact names must be unique in a workflow run, and the same command
+    # can run in several jobs or matrix legs, so the name ends in a random
+    # suffix.
+    - name: Name the reports artifact
+      id: artifact
+      if: (inputs.store_artifacts == 'true' || inputs.store_artifacts == '1')
+      shell: bash
+      env:
+        REPORT_NAME: ${{ inputs.report_name }}
+      run: |
+        if [[ ! "${REPORT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            REPORT_NAME=reports
+        fi
+        printf 'name=python-quality-reports-%s-%s\n' "${REPORT_NAME}" "$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')" >> "${GITHUB_OUTPUT}"
+    - name: ruff format
+      shell: bash
+      working-directory: ${{ inputs.working_dir }}
+      env:
+        PARAM_ALLOW_EMPTY: ${{ inputs.allow_empty }}
+        PARAM_CONFIG: ${{ inputs.config }}
+        PARAM_EXTRA_ARGS: ${{ inputs.extra_args }}
+        PARAM_JUNIT: ${{ inputs.junit }}
+        PARAM_OUTPUT_DIR: ${{ inputs.output_dir }}
+        PARAM_PATHS: ${{ inputs.paths }}
+        PARAM_REPORT_NAME: ${{ inputs.report_name }}
+        PARAM_REPORT_ONLY: ${{ inputs.report_only }}
+        PARAM_RUN_RECORD: ${{ inputs.run_record }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/fmt.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh"
+    - name: Upload the reports
+      if: always() && (inputs.store_artifacts == 'true' || inputs.store_artifacts == '1')
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: ${{ inputs.output_dir }}
+        if-no-files-found: ignore

@@ -1,0 +1,311 @@
+# Tests the GitHub Actions in actions/ on GitHub's own runners, as
+# .circleci/test-deploy.yml tests the orb's commands on CircleCI. Each job
+# runs the actions from this checkout (uses: ./actions/...), so a pull
+# request tests its own changes.
+name: GitHub Actions
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install jsonschema
+        run: python3 -m pip install --quiet --user jsonschema==4.26.0
+      - name: Run the offline tests
+        run: |
+          for test in tests/*_test.sh; do
+            echo "=== ${test}"
+            bash "${test}"
+          done
+
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./actions/install
+        with:
+          tools: ruff,ty,mypy,pyright,deptry,griffe,twine,check-wheel-contents
+          python: "3.11"
+      - name: Verify the installs are what the checksum tables and the locks pin
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          bin="${HOME}/.python-quality-orb/bin"
+          for tool in uv ruff ty; do
+            version=$(grep -A3 '^  version:' "src/commands/install_${tool}.yml" | sed -n 's/^    default: "\(.*\)"$/\1/p')
+            [[ "$(command -v "${tool}")" == "${bin}/${tool}" ]]
+            expected=$(grep -F "[\"${version}/${ARCH}\"]" "src/install/${tool}/install.sh" | cut -d'"' -f4)
+            [[ "$(sha512sum "${bin}/${tool}" | cut -d' ' -f1)" == "${expected}" ]]
+          done
+          for tool in mypy pyright deptry griffe twine check-wheel-contents; do
+            jq -e '.verified == true and (.python.version | startswith("3.11."))' "${bin}/.${tool}.install.json"
+          done
+          mypy --version
+          pyright --version
+      # A second install takes the verified releases from the cache.
+      - uses: ./actions/install
+        with:
+          tools: ruff,ty
+      - id: unlisted
+        uses: ./actions/install_ruff
+        continue-on-error: true
+        with:
+          version: 0.15.0
+          install_path: ~/unlisted
+      - name: Verify an unlisted Ruff fails closed
+        env:
+          UNLISTED: ${{ steps.unlisted.outcome }}
+        run: |
+          [[ "${UNLISTED}" == "failure" ]]
+          [[ ! -e ~/unlisted/ruff ]]
+
+  install-from-cache:
+    needs: install
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Block the download hosts
+        run: |
+          echo "127.0.0.1 github.com objects.githubusercontent.com release-assets.githubusercontent.com releases.astral.sh" \
+            | sudo tee -a /etc/hosts
+          if curl -sSf --max-time 10 -o /dev/null https://github.com; then
+            echo "github.com is still reachable."
+            exit 1
+          fi
+      - uses: ./actions/install
+        with:
+          tools: ruff,ty
+      - name: Verify the installs
+        run: |
+          ruff --version
+          ty --version
+
+  # install_hash.sh must print the table's entries for each default, after
+  # checking the release's published SHA-256 and its GitHub build attestation.
+  install-hash:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Generate the default versions' entries and compare them with the tables
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for tool in uv ruff ty; do
+            version=$(grep -A3 '^  version:' "src/commands/install_${tool}.yml" | sed -n 's/^    default: "\(.*\)"$/\1/p')
+            bash "src/install/${tool}/install_hash.sh" -v "${version}" 2> "${RUNNER_TEMP}/log" | tee "${RUNNER_TEMP}/entries"
+            cat "${RUNNER_TEMP}/log"
+            grep -q 'carries a GitHub build attestation' "${RUNNER_TEMP}/log"
+            [[ "$(wc -l < "${RUNNER_TEMP}/entries")" -eq 2 ]]
+            while IFS= read -r entry; do
+              grep -qxF -- "${entry}" "src/install/${tool}/install.sh"
+            done < "${RUNNER_TEMP}/entries"
+          done
+
+  # test-deploy.yml's checks-test: every check passes on the clean project.
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./actions/install
+        with:
+          tools: ruff,ty,uv,mypy,pyright,deptry,griffe,twine,check-wheel-contents
+      - name: Make the clean project, with its environment, in a git repository with an origin
+        run: |
+          cp -R tests/fixtures/clean "${RUNNER_TEMP}/clean"
+          cd "${RUNNER_TEMP}/clean"
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --quiet -e . pytest==9.1.1 coverage==7.17.0
+          printf '.venv/\n__pycache__/\n' > .gitignore
+          git config --global user.name ci
+          git config --global user.email ci@example.com
+          git init -q --bare "${RUNNER_TEMP}/origin.git"
+          git init -q -b main
+          git add -A
+          git commit -qm "the project"
+          git remote add origin "${RUNNER_TEMP}/origin.git"
+          git push -q origin main
+          git remote set-head origin main
+      - uses: ./actions/fmt
+        with:
+          working_dir: ${{ runner.temp }}/clean
+      - uses: ./actions/lint
+        with:
+          working_dir: ${{ runner.temp }}/clean
+      - uses: ./actions/mypy
+        with:
+          working_dir: ${{ runner.temp }}/clean
+          run_record: "true"
+      - uses: ./actions/pyright
+        with:
+          working_dir: ${{ runner.temp }}/clean
+      - uses: ./actions/ty
+        with:
+          working_dir: ${{ runner.temp }}/clean
+      - uses: ./actions/test
+        with:
+          working_dir: ${{ runner.temp }}/clean
+          coverage: "true"
+          coverage_min: "100"
+      - uses: ./actions/deps
+        with:
+          working_dir: ${{ runner.temp }}/clean
+      - uses: ./actions/api_compat
+        with:
+          working_dir: ${{ runner.temp }}/clean
+      - uses: ./actions/package
+        with:
+          working_dir: ${{ runner.temp }}/clean
+      - name: Check the results
+        run: |
+          reports=/tmp/python-quality-reports
+          jq -e 'length == 0' "${reports}/fmt.json" "${reports}/lint.json" "${reports}/deps.json" "${reports}/api_compat.json"
+          jq -e '.tests == 3 and .failures == 0 and .coverage.covered == .coverage.total' "${reports}/test.json"
+          jq -e '.ci.provider == "github-actions"' "${reports}/mypy.run-record.json"
+          cd "${RUNNER_TEMP}/clean"
+          [[ -z "$(git status --porcelain)" ]]
+      - name: Validate the reports
+        run: bash tests/validate_reports.sh
+
+  # test-deploy.yml's findings-test: every check finds what the dirty project
+  # holds, and fails by default.
+  findings:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./actions/install
+        with:
+          tools: ruff,ty,uv,mypy,pyright,deptry,griffe,twine,check-wheel-contents
+      - name: Make the dirty project with its environment, and a branch of the clean one that breaks its API
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.com
+          cp -R tests/fixtures/dirty "${RUNNER_TEMP}/dirty"
+          (cd "${RUNNER_TEMP}/dirty" && python3 -m venv .venv && .venv/bin/python -m pip install --quiet -e . pytest==9.1.1)
+          cp -R tests/fixtures/clean "${RUNNER_TEMP}/clean"
+          cd "${RUNNER_TEMP}/clean"
+          git init -q --bare "${RUNNER_TEMP}/origin.git"
+          git init -q -b main
+          git add -A
+          git commit -qm "the API as callers use it"
+          git remote add origin "${RUNNER_TEMP}/origin.git"
+          git push -q origin main
+          git remote set-head origin main
+          git checkout -q -b change
+          cp "${GITHUB_WORKSPACE}/tests/fixtures/api-break/__init__.py" src/cleanpkg/__init__.py
+          git commit -qam "a change that breaks callers"
+      - id: fmt
+        uses: ./actions/fmt
+        continue-on-error: true
+        with:
+          working_dir: ${{ runner.temp }}/dirty
+          store_artifacts: "false"
+      - id: lint
+        uses: ./actions/lint
+        continue-on-error: true
+        with:
+          working_dir: ${{ runner.temp }}/dirty
+          store_artifacts: "false"
+      - id: mypy
+        uses: ./actions/mypy
+        continue-on-error: true
+        with:
+          working_dir: ${{ runner.temp }}/dirty
+          store_artifacts: "false"
+      - id: pyright
+        uses: ./actions/pyright
+        continue-on-error: true
+        with:
+          working_dir: ${{ runner.temp }}/dirty
+          store_artifacts: "false"
+      - id: ty
+        uses: ./actions/ty
+        continue-on-error: true
+        with:
+          working_dir: ${{ runner.temp }}/dirty
+          store_artifacts: "false"
+      - id: test
+        uses: ./actions/test
+        continue-on-error: true
+        with:
+          working_dir: ${{ runner.temp }}/dirty
+          store_artifacts: "false"
+      - id: deps
+        uses: ./actions/deps
+        continue-on-error: true
+        with:
+          working_dir: ${{ runner.temp }}/dirty
+          store_artifacts: "false"
+      - id: package
+        uses: ./actions/package
+        continue-on-error: true
+        with:
+          working_dir: ${{ runner.temp }}/dirty
+          store_artifacts: "false"
+      - id: api_compat
+        uses: ./actions/api_compat
+        continue-on-error: true
+        with:
+          working_dir: ${{ runner.temp }}/clean
+          store_artifacts: "false"
+      - name: Check that every check failed, on what the projects hold
+        env:
+          OUTCOMES: >-
+            ${{ steps.fmt.outcome }} ${{ steps.lint.outcome }} ${{ steps.mypy.outcome }}
+            ${{ steps.pyright.outcome }} ${{ steps.ty.outcome }} ${{ steps.test.outcome }}
+            ${{ steps.deps.outcome }} ${{ steps.package.outcome }} ${{ steps.api_compat.outcome }}
+        run: |
+          for outcome in ${OUTCOMES}; do
+            [[ "${outcome}" == failure ]]
+          done
+          reports=/tmp/python-quality-reports
+          jq -e '[.[] | select(.kind == "unformatted") | .path] == ["src/dirtypkg/calc.py"]' "${reports}/fmt.json"
+          jq -e 'any(.[]; .rule == "F401")' "${reports}/lint.json"
+          jq -e 'any(.[]; .rule == "return-value")' "${reports}/mypy.json"
+          jq -e 'any(.[]; .rule == "reportReturnType")' "${reports}/pyright.json"
+          jq -e 'any(.[]; .rule == "invalid-return-type")' "${reports}/ty.json"
+          jq -e '.failures == 1' "${reports}/test.json"
+          jq -e '[.[].rule] | sort == ["DEP001", "DEP002"]' "${reports}/deps.json"
+          jq -e 'any(.[]; .tool == "twine") and any(.[]; .tool == "check-wheel-contents")' "${reports}/package.json"
+          jq -e '[.[].rule] | sort == ["parameter_added_required", "parameter_removed"]' "${reports}/api_compat.json"

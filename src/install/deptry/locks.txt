@@ -1,0 +1,47 @@
+# The deptry releases install_deptry installs with verify_checksums: strict,
+# newest first, each as a requirements file that pins deptry and every
+# dependency to one version with the SHA-256 of each wheel the orb can install
+# (CPython 3.11 to 3.14 on Linux x86_64 and aarch64, glibc or musl). uv
+# installs a block with --require-hashes, so a file whose hash isn't listed, or
+# a package the block doesn't pin, fails the install before anything runs.
+# deptry's wheels are compiled (abi3, CPython 3.10 and later); the deps command runs it
+# on the project's own interpreter.
+#
+# Add a release with:
+#   src/install/lock.sh -t deptry -v <version>
+# and paste its output at the top.
+
+# >>> deptry 0.25.1 >>>
+# deptry==0.25.1, resolved by uv 0.11.32 (x86_64-unknown-linux-gnu) from releases uploaded before 2026-10-24T00:00:00Z.
+click==8.5.0 \
+    --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360
+colorama==0.4.6 ; sys_platform == 'win32' \
+    --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
+deptry==0.25.1 \
+    --hash=sha256:14bfcc28b4326ed8c6abb30691b19077d4ef8613cfba6c37ef5b1f471775bf6f \
+    --hash=sha256:18d21b3545ab2bfec53f3f45c6f5f201d55f713323327f8d12674505469ae6b7 \
+    --hash=sha256:555f5f9a487899ec9bf301eecba1745e14d212c4b354f4d3a5fd691e907366d3 \
+    --hash=sha256:58d39279828dbf4efc1abb40bf50a71b21499c36759bed5a8d8a3c0e3149b091
+packaging==26.3 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+requirements-parser==0.13.1 \
+    --hash=sha256:6e385663eb32589d16e5b22bb6e5251a57908e73803ffff438b53cd6ea2056e0
+tomli==2.5.0 ; python_full_version < '3.15' \
+    --hash=sha256:1245a6638fc4bb0a60af38a7d45413db34a13842027c77597c712c998c62fdf0 \
+    --hash=sha256:21e4cae4114aba25aa0d4f85cdf486d290fb35c0954d7bba536248da64d43066 \
+    --hash=sha256:32a7b79ac57a2e83670ce329ccf675798bc5a2094783a63676866b70503f2e2b \
+    --hash=sha256:5d8bac3d603c97e6854424e5b2b5b741bdbde387e09f162fb0446812b4a8362b \
+    --hash=sha256:61ea1ebe1e55a34ea8199cc8dbff398d35027b82271c8ac4802fd3a1fd5b1bcc \
+    --hash=sha256:6cf74416bdc94ae458b14e37286c1073081850ac8459a00d0c5efef5d44294c6 \
+    --hash=sha256:6e95c7614e705bfe2b04b27aa124adec59752d15813df37e2156747cab3a006b \
+    --hash=sha256:7ac2027d37c3afbdf4bdd377f2676f6f1d2122a5be1f1137b49dced590b37e75 \
+    --hash=sha256:7ad1ea345759240d6463efa0ed1c704402752e49aa21476620738d74d72d8aa1 \
+    --hash=sha256:86665cee9c4835b7a7f1e8ec2c719b5258d4dc782887aded5a8ae7352a96843b \
+    --hash=sha256:96243987194634bd411066ce40c952e108f86af04db533ecd8ac3ff2a85b1885 \
+    --hash=sha256:9b03d7dc168353b4132965bde20feceabaa470e570c6f59660dfae59b1f9eeb3 \
+    --hash=sha256:bbaefc84548d754be821bba7c4141c4787dda182f9e77f2f87b71213529efa7b \
+    --hash=sha256:bf0b5e8e0f68ebb494356e577c06c139161efd8d3b9050f93b39b7c26cc54ff0 \
+    --hash=sha256:c414be4ed9d3cac80c42e348fa5a956117d1a48227f48026e31f59cb4a7671eb \
+    --hash=sha256:d7e369fd63331746182360977b1892bfc215476a30d61612d732425311639f56 \
+    --hash=sha256:ed53f7e89bb04f6d9e8e7799112360b0c4d5cbff067de0814c98c37c39b920f7
+# <<< deptry 0.25.1 <<<

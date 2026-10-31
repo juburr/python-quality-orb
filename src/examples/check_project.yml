@@ -1,0 +1,32 @@
+description: >
+  Format, lint and type-check a project, and run its tests with coverage, in
+  the project's own environment.
+
+usage:
+  version: 2.1
+  orbs:
+    python-quality: juburr/python-quality-orb@0.1.0
+  jobs:
+    quality:
+      docker:
+        - image: cimg/python:3.13
+      steps:
+        - checkout
+        - run:
+            name: Make the project's environment
+            command: |
+              python -m venv .venv
+              .venv/bin/pip install -e . pytest coverage
+        - python-quality/install:
+            tools: ruff,mypy,deptry
+        - python-quality/fmt
+        - python-quality/lint
+        - python-quality/mypy
+        - python-quality/deps
+        - python-quality/test:
+            coverage: true
+            coverage_min: "90"
+  workflows:
+    quality:
+      jobs:
+        - quality

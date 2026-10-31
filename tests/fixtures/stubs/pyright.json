@@ -1,0 +1,10 @@
+{
+  "version": "1.1.414",
+  "time": "1761904800000",
+  "generalDiagnostics": [
+    {"file": "@JOB@/src/demo/__init__.py", "severity": "error", "message": "Type \"int\" is not assignable to return type \"str\"", "range": {"start": {"line": 4, "character": 11}, "end": {"line": 4, "character": 16}}, "rule": "reportReturnType"},
+    {"file": "@JOB@/src/demo/util.py", "severity": "warning", "message": "Import \"yaml\" could not be resolved from source", "range": {"start": {"line": 0, "character": 7}, "end": {"line": 0, "character": 11}}, "rule": "reportMissingModuleSource"},
+    {"file": "@JOB@/src/demo/util.py", "severity": "information", "message": "Type of \"x\" is \"int\"", "range": {"start": {"line": 8, "character": 4}, "end": {"line": 8, "character": 5}}}
+  ],
+  "summary": {"filesAnalyzed": 3, "errorCount": 1, "warningCount": 1, "informationCount": 1, "timeInSec": 0.4}
+}

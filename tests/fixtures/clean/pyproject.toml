@@ -1,0 +1,38 @@
+# A project every python-quality-orb check passes. CI copies it out of the
+# checkout, makes its .venv, and runs each command on it.
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cleanpkg"
+version = "1.0.0"
+description = "A package every python-quality-orb check passes."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+mypy_path = "src"
+
+[tool.pyright]
+include = ["src", "tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["cleanpkg"]
+
+[tool.coverage.report]
+fail_under = 90
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

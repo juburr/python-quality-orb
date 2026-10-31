@@ -1,0 +1,152 @@
+description: >
+  Runs a project's tests with pytest, in the project's own environment
+  (python -m pytest), where pytest, the project and its dependencies are
+  installed, and with coverage, measured by coverage.py there too. Failed
+  and erroring tests, too many warnings (--max-warnings), and coverage
+  below coverage_min or the project's own fail_under fail the step; so does
+  a run pytest couldn't complete (such as a test module that doesn't
+  import), or one that collected no test. On CircleCI with parallelism,
+  split_tests gives each node its share of the test files by the timings of
+  earlier runs. Writes pytest's JUnit report, a summary as JSON, and with
+  coverage its JSON, Cobertura XML and text reports.
+parameters:
+  working_dir:
+    type: string
+    default: "."
+    description: >
+      The directory to run in, which should be the project's root (pytest's
+      rootdir). paths, environment and coverage_config are relative to it.
+  paths:
+    type: string
+    default: ""
+    description: >
+      The test files and directories to run, separated by commas or spaces.
+      Leave empty for pytest's own choice: its testpaths setting, or the
+      working directory. Environment variables are expanded.
+  environment:
+    type: string
+    default: ".venv"
+    description: >
+      The project's environment, with pytest, the project and its dependencies installed: a
+      directory such as .venv, or an interpreter such as .venv/bin/python,
+      relative to the working directory. Create it in an earlier step, such
+      as with uv sync, poetry install, or python -m venv and pip install.
+      Environment variables are expanded.
+  coverage:
+    type: boolean
+    default: false
+    description: >
+      Measure coverage with coverage.py (python -m coverage run -m pytest),
+      which must be installed in the environment. The project's coverage
+      configuration (.coveragerc, [tool.coverage] in pyproject.toml,
+      setup.cfg or tox.ini) applies.
+  coverage_source:
+    type: string
+    default: ""
+    description: >
+      The packages or directories to measure, separated by commas or spaces
+      (coverage run --source). Leave empty for the project's coverage
+      configuration. Environment variables are expanded.
+  coverage_min:
+    type: string
+    default: ""
+    description: >
+      The lowest coverage that passes, as a percentage such as 80 or 92.5,
+      counting lines and, with branch coverage on, branches. It is compared
+      in whole numbers, never rounded. It replaces the project's fail_under;
+      leave empty to apply that one. Environment variables are expanded.
+  coverage_config:
+    type: string
+    default: ""
+    description: >
+      A coverage.py configuration file to use instead of the one it finds.
+      Environment variables are expanded.
+  split_tests:
+    type: boolean
+    default: false
+    description: >
+      With CircleCI's parallelism, run this node's share of the test files,
+      split by the timings of earlier runs (circleci tests split
+      --split-by=timings --timings-type=filename), which come from the JUnit
+      report stored with store_test_results. coverage_min can't be checked
+      across nodes.
+  allow_empty:
+    type: boolean
+    default: false
+    description: Pass when pytest collects no test, instead of failing.
+  extra_args:
+    type: string
+    default: ""
+    description: >
+      Further options for pytest and its plugins, such as -x, -k "not
+      slow", -n=4 or --max-warnings=0. They are split like shell words, but
+      nothing in them is expanded or run. Give a plugin's option and its
+      value as --option=value. Options the command sets itself, and those
+      that would collect without running or stop for a debugger, are
+      refused. Environment variables are expanded.
+  report_name:
+    type: string
+    default: test
+    description: >
+      The reports' file name without its extension: <report_name>.json (the
+      counts and the tests that failed), and with coverage
+      <report_name>.coverage.json, .coverage.xml and .coverage.txt. The
+      JUnit report is output_dir/junit/<report_name>.xml. Letters, digits,
+      '.', '_' and '-'.
+  output_dir:
+    type: string
+    default: /tmp/python-quality-reports
+    description: >
+      Absolute path of the directory to write the reports into. Environment
+      variables are not expanded, since the path is also passed to
+      store_artifacts and store_test_results.
+  junit:
+    type: boolean
+    default: true
+    description: >
+      Write pytest's JUnit report to output_dir/junit/<report_name>.xml, and
+      store it with store_test_results for CircleCI's Tests tab.
+  run_record:
+    type: boolean
+    default: false
+    description: >
+      Also write a run record (<report_name>.run-record.json): what was
+      checked, with which tool and settings, and what it found.
+  store_artifacts:
+    type: boolean
+    default: true
+    description: Store output_dir as job artifacts under python-quality-reports/, including when the step fails.
+steps:
+  - run:
+      name: pytest (<< parameters.report_name >>)
+      working_directory: << parameters.working_dir >>
+      environment:
+        PARAM_ALLOW_EMPTY: << parameters.allow_empty >>
+        PARAM_COVERAGE: << parameters.coverage >>
+        PARAM_COVERAGE_CONFIG: << parameters.coverage_config >>
+        PARAM_COVERAGE_MIN: << parameters.coverage_min >>
+        PARAM_COVERAGE_SOURCE: << parameters.coverage_source >>
+        PARAM_ENVIRONMENT: << parameters.environment >>
+        PARAM_EXTRA_ARGS: << parameters.extra_args >>
+        PARAM_JUNIT: << parameters.junit >>
+        PARAM_OUTPUT_DIR: << parameters.output_dir >>
+        PARAM_PATHS: << parameters.paths >>
+        PARAM_REPORT_NAME: << parameters.report_name >>
+        PARAM_RUN_RECORD: << parameters.run_record >>
+        PARAM_SPLIT_TESTS: << parameters.split_tests >>
+        SCRIPT_PYTHON_QUALITY_LIB: << include(scripts/lib/python_quality.sh) >>
+        SCRIPT_PYTHON_QUALITY_PY: << include(scripts/lib/python_quality.py) >>
+      command: << include(scripts/test.sh) >>
+  - when:
+      condition: << parameters.junit >>
+      steps:
+        - store_test_results:
+            path: << parameters.output_dir >>/junit/<< parameters.report_name >>.xml
+            when: always
+  - when:
+      condition: << parameters.store_artifacts >>
+      steps:
+        - store_artifacts:
+            path: << parameters.output_dir >>
+            destination: python-quality-reports
+            when: always

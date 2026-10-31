@@ -1,0 +1,32 @@
+# A project every python-quality-orb check finds something in:
+#   fmt      src/dirtypkg/calc.py isn't formatted
+#   lint     an unused import (F401)
+#   mypy, pyright, ty   a function returns an int where it says str, and an
+#            import that can't be resolved (yaml)
+#   test     test_add fails
+#   deps     requests is declared but never imported (DEP002), and yaml is
+#            imported but not declared (DEP001)
+#   package  the README's title underline is too short, which twine check
+#            --strict rejects, and the wheel holds tests/ at its top level,
+#            which check-wheel-contents rejects
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dirtypkg"
+version = "1.0.0"
+description = "A package every python-quality-orb check finds something in."
+readme = "README.rst"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = ["requests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dirtypkg", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,5 @@
+[
+  {"check_name": "invalid-return-type", "description": "invalid-return-type: Return type does not match returned value", "severity": "major", "fingerprint": "5b0d3b1e2f9a8c01", "location": {"path": "src/demo/__init__.py", "positions": {"begin": {"line": 5, "column": 12}, "end": {"line": 5, "column": 17}}}},
+  {"check_name": "possibly-unresolved-reference", "description": "possibly-unresolved-reference: Name `x` used when possibly not defined", "severity": "minor", "fingerprint": "a1c2b3d4e5f60718", "location": {"path": "src/demo/util.py", "positions": {"begin": {"line": 7, "column": 5}, "end": {"line": 7, "column": 6}}}},
+  {"check_name": "revealed-type", "description": "revealed-type: Revealed type: `int`", "severity": "info", "fingerprint": "0f1e2d3c4b5a6978", "location": {"path": "src/demo/util.py", "positions": {"begin": {"line": 9, "column": 5}, "end": {"line": 9, "column": 20}}}}
+]

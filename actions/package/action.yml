@@ -1,0 +1,130 @@
+name: Build and check Python distributions
+description: >
+  Builds a Python project's distributions with uv build (the sdist, then the
+  wheel from it, as installers build it) and checks them: twine check --strict
+  reads each one's metadata and renders its description as PyPI would, and
+  check-wheel-contents finds mistakes in a wheel's files, such as compiled
+  files, duplicate or missing modules, or stray top-level files. dists checks
+  distributions built earlier instead. A distribution either rejects is a
+  finding, which fails the step unless report_only is true; a build that fails,
+  or a check that couldn't run, fails it either way. Run the install action
+  (tools: uv, twine, check-wheel-contents) first. The GitHub Actions twin of the
+  orb's package command.
+author: juburr
+
+inputs:
+  working_dir:
+    description: >
+      The project's root, to build in. dists and out_dir are relative to it.
+    default: .
+  dists:
+    description: >
+      Distributions built earlier to check instead of building, separated by commas
+      or spaces, each a path or a glob such as dist/*. Each must exist. Leave empty
+      to build with uv.
+    default: ""
+  out_dir:
+    description: >
+      The directory to keep the distributions built in, such as dist, for a later
+      publish step. Leave empty to keep them with the reports, in
+      output_dir/<report_name>-dist.
+    default: ""
+  no_sources:
+    description: >
+      Build without the [tool.uv.sources] of pyproject.toml (uv build --no-sources),
+      as anyone who installs the sdist builds it, so a dependency that only resolves
+      through a local or Git source fails here.
+    default: "true"
+  twine:
+    description: >
+      Check every distribution with twine check --strict.
+    default: "true"
+  check_wheel_contents:
+    description: >
+      Check every wheel with check-wheel-contents.
+    default: "true"
+  check_wheel_contents_args:
+    description: >
+      Options for check-wheel-contents, such as --ignore=W002 or
+      --toplevel=mypackage. Its configuration ([tool.check-wheel-contents] in
+      pyproject.toml) also applies.
+    default: ""
+  extra_args:
+    description: >
+      Further options for uv build, such as --python=3.12 or
+      --config-setting=KEY=VALUE. They are split like shell words, but nothing in
+      them is expanded or run. Options the command sets itself, and those that would
+      build one kind of distribution, elsewhere, or another package, are refused.
+    default: ""
+  report_name:
+    description: >
+      The reports' file name without its extension: <report_name>.json (the problems
+      found, by distribution). Letters, digits, '.', '_' and '-'.
+    default: package
+  output_dir:
+    description: >
+      Absolute path of the directory to write the reports into.
+    default: /tmp/python-quality-reports
+  junit:
+    description: >
+      Write the findings as JUnit (output_dir/junit/<report_name>.xml).
+    default: "true"
+  run_record:
+    description: >
+      Also write a run record (<report_name>.run-record.json): what was checked,
+      with which tool and settings, and what it found.
+    default: "false"
+  report_only:
+    description: >
+      Report findings without failing the step, to adopt the check gradually. A
+      check that couldn't run, or that checked nothing, still fails it.
+    default: "false"
+  store_artifacts:
+    description: >
+      Upload output_dir as a workflow artifact named
+      python-quality-reports-<report_name>-<random>, including when the step fails.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Artifact names must be unique in a workflow run, and the same command
+    # can run in several jobs or matrix legs, so the name ends in a random
+    # suffix.
+    - name: Name the reports artifact
+      id: artifact
+      if: (inputs.store_artifacts == 'true' || inputs.store_artifacts == '1')
+      shell: bash
+      env:
+        REPORT_NAME: ${{ inputs.report_name }}
+      run: |
+        if [[ ! "${REPORT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            REPORT_NAME=reports
+        fi
+        printf 'name=python-quality-reports-%s-%s\n' "${REPORT_NAME}" "$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')" >> "${GITHUB_OUTPUT}"
+    - name: package
+      shell: bash
+      working-directory: ${{ inputs.working_dir }}
+      env:
+        PARAM_CHECK_WHEEL_CONTENTS: ${{ inputs.check_wheel_contents }}
+        PARAM_CHECK_WHEEL_CONTENTS_ARGS: ${{ inputs.check_wheel_contents_args }}
+        PARAM_DISTS: ${{ inputs.dists }}
+        PARAM_EXTRA_ARGS: ${{ inputs.extra_args }}
+        PARAM_JUNIT: ${{ inputs.junit }}
+        PARAM_NO_SOURCES: ${{ inputs.no_sources }}
+        PARAM_OUTPUT_DIR: ${{ inputs.output_dir }}
+        PARAM_OUT_DIR: ${{ inputs.out_dir }}
+        PARAM_REPORT_NAME: ${{ inputs.report_name }}
+        PARAM_REPORT_ONLY: ${{ inputs.report_only }}
+        PARAM_RUN_RECORD: ${{ inputs.run_record }}
+        PARAM_TWINE: ${{ inputs.twine }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/package.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh"
+    - name: Upload the reports
+      if: always() && (inputs.store_artifacts == 'true' || inputs.store_artifacts == '1')
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: ${{ inputs.output_dir }}
+        if-no-files-found: ignore

@@ -1,0 +1,272 @@
+description: >
+  Installs the Python quality tools named in tools, through the install
+  command for each (install_ruff, install_ty, install_uv, install_python,
+  install_mypy, install_pyright, install_deptry, install_griffe,
+  install_twine, install_check_wheel_contents), which can also be used on
+  their own. Ruff, ty and uv are release binaries verified against this orb's
+  checksum tables. The others are installed with uv, each into an environment
+  of its own on a CPython uv checks against the SHA-256 it carries, from this
+  orb's lock for the release, which pins every file to its SHA-256. Run this
+  before the orb's other commands. The test command needs none of them: it
+  runs pytest and coverage in the project's own environment.
+parameters:
+  tools:
+    type: string
+    default: "ruff,mypy"
+    description: >
+      The tools to install, separated by commas or spaces: any of ruff (for
+      fmt and lint), ty (for ty), mypy (for mypy), pyright (for pyright),
+      deptry (for deps), griffe (for api_compat), twine and
+      check-wheel-contents (for package, with uv), uv, and python (the Python
+      the tools run on, alone). uv is installed whenever a tool that needs it
+      is. An unknown name fails the step.
+  ruff_version:
+    type: string
+    default: "0.17.2"
+    description: The Ruff release, when tools names it. Environment variables are expanded.
+  ty_version:
+    type: string
+    default: "0.0.91"
+    description: The ty release, when tools names it. Environment variables are expanded.
+  mypy_version:
+    type: string
+    default: "2.4.0"
+    description: The mypy release, when tools names it. Environment variables are expanded.
+  pyright_version:
+    type: string
+    default: "1.1.414"
+    description: The Pyright release, when tools names it. Environment variables are expanded.
+  deptry_version:
+    type: string
+    default: "0.25.1"
+    description: The deptry release, when tools names it. Environment variables are expanded.
+  griffe_version:
+    type: string
+    default: "2.4.1"
+    description: The Griffe release, when tools names it. Environment variables are expanded.
+  twine_version:
+    type: string
+    default: "7.0.0"
+    description: The twine release, when tools names it. Environment variables are expanded.
+  check_wheel_contents_version:
+    type: string
+    default: "0.6.3"
+    description: The check-wheel-contents release, when tools names it. Environment variables are expanded.
+  uv_version:
+    type: string
+    default: "0.13.6"
+    description: >
+      The uv release, when tools names uv, python or a tool installed with
+      it. Environment variables are expanded.
+  python:
+    type: string
+    default: "3.14"
+    description: >
+      The Python the tools installed with uv run on: 3.11 to 3.14 for a
+      CPython that uv downloads and checks against the SHA-256 it carries for
+      that build, "system" for the python3 on the PATH, or an interpreter's
+      absolute path. It is not the project's Python, which the checks take as
+      their environment parameter. Environment variables are expanded.
+  index_url:
+    type: string
+    default: "https://pypi.org/simple"
+    description: >
+      The package index to download the tools installed with uv from, such as
+      a PyPI mirror: an https:// URL, without credentials or a query or
+      fragment. The locks' hashes decide what is installed. Environment
+      variables are expanded.
+  python_install_mirror:
+    type: string
+    default: ""
+    description: >
+      Base URL of a mirror of uv's Python downloads, https:// or file://. uv
+      still checks every download against the SHA-256 it carries. Environment
+      variables are expanded.
+  download_base_url:
+    type: string
+    default: ""
+    description: >
+      Base URL of an internal mirror of GitHub releases to download Ruff, ty
+      and uv from instead of https://github.com, such as an Artifactory or
+      Nexus remote repository: an https:// URL, without credentials or a query
+      or fragment. Environment variables are expanded.
+  caching:
+    type: boolean
+    default: true
+    description: >
+      Cache the verified releases and the Python archive uv downloads between
+      jobs. Each is checked again whenever it is used. Installed environments
+      and packages are never cached.
+  install_path:
+    type: string
+    default: ""
+    description: >
+      Absolute path of the directory to install the tools, and the scripts
+      that run those installed with uv, into. It is added to the PATH of
+      later steps when it isn't already on it. Environment variables are
+      expanded. Defaults to $HOME/.python-quality-orb/bin.
+  verify_checksums:
+    type: enum
+    enum: ["false", "known_versions", "strict"]
+    default: strict
+    description: >
+      Verification of Ruff, ty and uv against this orb's checksum tables, and
+      of each tool installed with uv against this orb's lock for its release.
+      "strict" (default) fails before downloading anything when a version has
+      no checksum or lock. "known_versions" installs unlisted versions
+      unverified, with a warning. "false" skips verification and is not
+      recommended.
+steps:
+  - run:
+      name: Check the tools to install
+      environment:
+        PARAM_TOOLS: << parameters.tools >>
+      command: << include(scripts/install_tools.sh) >>
+  - when:
+      condition:
+        matches:
+          pattern: "^(.*[ ,])?ruff([ ,].*)?$"
+          value: << parameters.tools >>
+      steps:
+        - install_ruff:
+            caching: << parameters.caching >>
+            download_base_url: << parameters.download_base_url >>
+            install_path: << parameters.install_path >>
+            verify_checksums: << parameters.verify_checksums >>
+            version: << parameters.ruff_version >>
+  - when:
+      condition:
+        matches:
+          pattern: "^(.*[ ,])?ty([ ,].*)?$"
+          value: << parameters.tools >>
+      steps:
+        - install_ty:
+            caching: << parameters.caching >>
+            download_base_url: << parameters.download_base_url >>
+            install_path: << parameters.install_path >>
+            verify_checksums: << parameters.verify_checksums >>
+            version: << parameters.ty_version >>
+  # Every tool installed with uv needs it, so uv is installed once, first,
+  # and the tool installs below skip their own.
+  - when:
+      condition:
+        matches:
+          pattern: "^(.*[ ,])?(uv|python|mypy|pyright|deptry|griffe|twine|check-wheel-contents)([ ,].*)?$"
+          value: << parameters.tools >>
+      steps:
+        - install_uv:
+            caching: << parameters.caching >>
+            download_base_url: << parameters.download_base_url >>
+            install_path: << parameters.install_path >>
+            verify_checksums: << parameters.verify_checksums >>
+            version: << parameters.uv_version >>
+  - when:
+      condition:
+        matches:
+          pattern: "^(.*[ ,])?python([ ,].*)?$"
+          value: << parameters.tools >>
+      steps:
+        - install_python:
+            caching: << parameters.caching >>
+            install_path: << parameters.install_path >>
+            install_uv: false
+            python: << parameters.python >>
+            python_install_mirror: << parameters.python_install_mirror >>
+            uv_version: << parameters.uv_version >>
+            verify_checksums: << parameters.verify_checksums >>
+  - when:
+      condition:
+        matches:
+          pattern: "^(.*[ ,])?mypy([ ,].*)?$"
+          value: << parameters.tools >>
+      steps:
+        - install_mypy:
+            caching: << parameters.caching >>
+            index_url: << parameters.index_url >>
+            install_path: << parameters.install_path >>
+            install_uv: false
+            python: << parameters.python >>
+            python_install_mirror: << parameters.python_install_mirror >>
+            uv_version: << parameters.uv_version >>
+            verify_checksums: << parameters.verify_checksums >>
+            version: << parameters.mypy_version >>
+  - when:
+      condition:
+        matches:
+          pattern: "^(.*[ ,])?pyright([ ,].*)?$"
+          value: << parameters.tools >>
+      steps:
+        - install_pyright:
+            caching: << parameters.caching >>
+            index_url: << parameters.index_url >>
+            install_path: << parameters.install_path >>
+            install_uv: false
+            python: << parameters.python >>
+            python_install_mirror: << parameters.python_install_mirror >>
+            uv_version: << parameters.uv_version >>
+            verify_checksums: << parameters.verify_checksums >>
+            version: << parameters.pyright_version >>
+  - when:
+      condition:
+        matches:
+          pattern: "^(.*[ ,])?deptry([ ,].*)?$"
+          value: << parameters.tools >>
+      steps:
+        - install_deptry:
+            caching: << parameters.caching >>
+            index_url: << parameters.index_url >>
+            install_path: << parameters.install_path >>
+            install_uv: false
+            python: << parameters.python >>
+            python_install_mirror: << parameters.python_install_mirror >>
+            uv_version: << parameters.uv_version >>
+            verify_checksums: << parameters.verify_checksums >>
+            version: << parameters.deptry_version >>
+  - when:
+      condition:
+        matches:
+          pattern: "^(.*[ ,])?griffe([ ,].*)?$"
+          value: << parameters.tools >>
+      steps:
+        - install_griffe:
+            caching: << parameters.caching >>
+            index_url: << parameters.index_url >>
+            install_path: << parameters.install_path >>
+            install_uv: false
+            python: << parameters.python >>
+            python_install_mirror: << parameters.python_install_mirror >>
+            uv_version: << parameters.uv_version >>
+            verify_checksums: << parameters.verify_checksums >>
+            version: << parameters.griffe_version >>
+  - when:
+      condition:
+        matches:
+          pattern: "^(.*[ ,])?twine([ ,].*)?$"
+          value: << parameters.tools >>
+      steps:
+        - install_twine:
+            caching: << parameters.caching >>
+            index_url: << parameters.index_url >>
+            install_path: << parameters.install_path >>
+            install_uv: false
+            python: << parameters.python >>
+            python_install_mirror: << parameters.python_install_mirror >>
+            uv_version: << parameters.uv_version >>
+            verify_checksums: << parameters.verify_checksums >>
+            version: << parameters.twine_version >>
+  - when:
+      condition:
+        matches:
+          pattern: "^(.*[ ,])?check-wheel-contents([ ,].*)?$"
+          value: << parameters.tools >>
+      steps:
+        - install_check_wheel_contents:
+            caching: << parameters.caching >>
+            index_url: << parameters.index_url >>
+            install_path: << parameters.install_path >>
+            install_uv: false
+            python: << parameters.python >>
+            python_install_mirror: << parameters.python_install_mirror >>
+            uv_version: << parameters.uv_version >>
+            verify_checksums: << parameters.verify_checksums >>
+            version: << parameters.check_wheel_contents_version >>

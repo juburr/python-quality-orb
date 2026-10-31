@@ -1,0 +1,125 @@
+description: >
+  Type-checks Python code with ty, Astral's type checker (in beta),
+  against the packages installed in the project's environment, and the
+  environment's Python version unless ty's configuration (ty.toml or
+  [tool.ty] in pyproject.toml) sets python-version. Diagnostics at or above
+  fail_on are findings, which fail the step unless report_only is true; a
+  run that couldn't complete, or that found no Python file, fails it either
+  way. The job's TY_* variables and a user-level ty configuration are
+  ignored. Writes the findings as JSON, SARIF and JUnit. Run install (tools:
+  ty) first.
+parameters:
+  working_dir:
+    type: string
+    default: "."
+    description: The directory to run in. paths, environment and config are relative to it.
+  paths:
+    type: string
+    default: ""
+    description: >
+      The files and directories to check, separated by commas or spaces.
+      Leave empty for ty's default: the project, as its include and exclude
+      settings select. Environment variables are expanded.
+  environment:
+    type: string
+    default: ".venv"
+    description: >
+      The project's environment, with its dependencies installed: a
+      directory such as .venv, or an interpreter such as .venv/bin/python,
+      relative to the working directory. Create it in an earlier step, such
+      as with uv sync, poetry install, or python -m venv and pip install.
+      Environment variables are expanded.
+  config:
+    type: string
+    default: ""
+    description: >
+      A ty configuration file (ty.toml) to use instead of the one ty finds.
+      Environment variables are expanded.
+  fail_on:
+    type: enum
+    enum: ["error", "warning", "info"]
+    default: warning
+    description: >
+      The lowest severity that is a finding, warning by default as ty's own
+      error-on-warning. Every diagnostic is reported.
+  allow_empty:
+    type: boolean
+    default: false
+    description: Pass when ty finds no Python file to check, instead of failing.
+  extra_args:
+    type: string
+    default: ""
+    description: >
+      Further options for ty check, such as --python-version=3.12 or
+      --error=possibly-unresolved-reference. They are split like shell
+      words, but nothing in them is expanded or run. Options the command
+      sets itself, and those that would change files, the exit code or the
+      output it reads, are refused. Environment variables are expanded.
+  report_name:
+    type: string
+    default: ty
+    description: >
+      The reports' file name without its extension: <report_name>.json (ty's
+      diagnostics) and <report_name>.sarif. Letters, digits, '.', '_' and
+      '-'.
+  output_dir:
+    type: string
+    default: /tmp/python-quality-reports
+    description: >
+      Absolute path of the directory to write the reports into. Environment
+      variables are not expanded, since the path is also passed to
+      store_artifacts and store_test_results.
+  junit:
+    type: boolean
+    default: true
+    description: >
+      Write the findings as JUnit (output_dir/junit/<report_name>.xml), and
+      store it with store_test_results for CircleCI's Tests tab.
+  run_record:
+    type: boolean
+    default: false
+    description: >
+      Also write a run record (<report_name>.run-record.json): what was
+      checked, with which tool and settings, and what it found.
+  report_only:
+    type: boolean
+    default: false
+    description: >
+      Report findings without failing the step, to adopt the check
+      gradually. A check that couldn't run, or that checked nothing, still
+      fails it.
+  store_artifacts:
+    type: boolean
+    default: true
+    description: Store output_dir as job artifacts under python-quality-reports/, including when the step fails.
+steps:
+  - run:
+      name: ty (<< parameters.report_name >>)
+      working_directory: << parameters.working_dir >>
+      environment:
+        PARAM_ALLOW_EMPTY: << parameters.allow_empty >>
+        PARAM_CONFIG: << parameters.config >>
+        PARAM_ENVIRONMENT: << parameters.environment >>
+        PARAM_EXTRA_ARGS: << parameters.extra_args >>
+        PARAM_FAIL_ON: << parameters.fail_on >>
+        PARAM_JUNIT: << parameters.junit >>
+        PARAM_OUTPUT_DIR: << parameters.output_dir >>
+        PARAM_PATHS: << parameters.paths >>
+        PARAM_REPORT_NAME: << parameters.report_name >>
+        PARAM_REPORT_ONLY: << parameters.report_only >>
+        PARAM_RUN_RECORD: << parameters.run_record >>
+        SCRIPT_PYTHON_QUALITY_LIB: << include(scripts/lib/python_quality.sh) >>
+      command: << include(scripts/ty.sh) >>
+  - when:
+      condition: << parameters.junit >>
+      steps:
+        - store_test_results:
+            path: << parameters.output_dir >>/junit/<< parameters.report_name >>.xml
+            when: always
+  - when:
+      condition: << parameters.store_artifacts >>
+      steps:
+        - store_artifacts:
+            path: << parameters.output_dir >>
+            destination: python-quality-reports
+            when: always

@@ -1,0 +1,27 @@
+# The pyright releases install_pyright installs with verify_checksums: strict,
+# newest first, each as a requirements file that pins pyright and every
+# dependency to one version with the SHA-256 of each wheel the orb can install
+# (CPython 3.11 to 3.14 on Linux x86_64 and aarch64, glibc or musl). uv
+# installs a block with --require-hashes, so a file whose hash isn't listed, or
+# a package the block doesn't pin, fails the install before anything runs.
+# The lock holds pyright[nodejs], so Node.js comes as a wheel (nodejs-wheel-binaries, which
+# needs glibc 2.28 or musl) and pyright never downloads Node.js or npm packages when it runs.
+#
+# Add a release with:
+#   src/install/lock.sh -t pyright -v <version>
+# and paste its output at the top.
+
+# >>> pyright 1.1.414 >>>
+# pyright[nodejs]==1.1.414, resolved by uv 0.11.32 (x86_64-unknown-linux-gnu) from releases uploaded before 2026-10-24T00:00:00Z.
+nodeenv==1.11.0 \
+    --hash=sha256:edaa16e6c14d7cf395d75d4bbd5a26390f4dc06501a33b4e76282b02cc688a25
+nodejs-wheel-binaries==24.19.0 \
+    --hash=sha256:28d078b2ced9e2069516e652dc4b1380e7a1a7f2d3934eccd1611586d283ba4c \
+    --hash=sha256:352e048ab4dd35e7de5f338d1cc4fcbf77a0e93da30bf7336a8217ee246b31d7 \
+    --hash=sha256:4196a947bcc883f2003ab101762d729f3e99b5e86b75bd09151563403e2eceb8 \
+    --hash=sha256:4e029dadfae1295876063c96b236f673487e8c27379fe146c1e2250283520227
+pyright==1.1.414 \
+    --hash=sha256:2a6b4b3298c9eec174c5ed83bd338de6eee82df2992f3e1930e6199d381be36f
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+# <<< pyright 1.1.414 <<<

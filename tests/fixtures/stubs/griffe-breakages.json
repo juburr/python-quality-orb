@@ -1,0 +1,5 @@
+[
+  {"kind": "PARAMETER_REMOVED", "path": "demo.greet", "old": "punctuation", "new": null, "line": 3, "in_new": true},
+  {"kind": "OBJECT_REMOVED", "path": "demo.farewell", "old": null, "new": null, "line": 7, "in_new": false},
+  {"kind": "RETURN_CHANGED_TYPE", "path": "demo._compat.shim", "old": "str", "new": "bytes", "line": 2, "in_new": true}
+]
