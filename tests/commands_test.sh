@@ -774,9 +774,21 @@ run test coverage_min=80
 check "coverage_min needs coverage" rc_is 1
 run test split_tests=true -- CIRCLE_NODE_TOTAL=2 CIRCLE_NODE_INDEX=1
 check "split_tests runs this node's share" rc_is 0
-check "collecting the tests first" has pytest --collect-only -q -p no:cacheprovider
+check "collecting the tests first, one node ID per line" has pytest --collect-only -p no:cacheprovider --verbosity=-1
 check "split by file name timings" grep -q -- "tests split --split-by=timings --timings-type=filename" "${STUB}/split.log"
 check "running the files that fell to it" bash -c '[[ "$(tail -n 1 "$1")" == tests/test_other.py ]]' _ "$(call pytest "--junitxml=${OUT}/junit/test.xml")"
+run test split_tests=true -- CIRCLE_NODE_TOTAL=2 CIRCLE_NODE_INDEX=1 PYTEST_ADDOPTS=-q
+check "a project's -q (here PYTEST_ADDOPTS) doesn't turn the node IDs into file counts" rc_is 0
+check "so the node still runs its share" bash -c '[[ "$(tail -n 1 "$1")" == tests/test_other.py ]]' _ "$(call pytest "--junitxml=${OUT}/junit/test.xml")"
+run test split_tests=true -- CIRCLE_NODE_TOTAL=2 STUB_PYTEST_COLLECT="tests/test_demo.py: 2"
+check "a collection that lists no node ID fails, instead of an empty share passing" rc_is 1
+check "saying so" said "listed no node ID"
+check "before running any test" no_call pytest "--junitxml=${OUT}/junit/test.xml"
+run test split_tests=true -- CIRCLE_NODE_TOTAL=2 STUB_PYTEST_COLLECT_EXIT=5
+check "a split collection of no test fails" rc_is 1
+check "saying nothing would be tested" said "pytest collected no test"
+run test split_tests=true allow_empty=true -- CIRCLE_NODE_TOTAL=2 STUB_PYTEST_COLLECT_EXIT=5
+check "unless allow_empty" rc_is 0
 run test split_tests=true coverage=true coverage_min=80 -- CIRCLE_NODE_TOTAL=2
 check "coverage_min can't be checked across nodes" rc_is 1
 run test split_tests=true -- CIRCLE_NODE_TOTAL=4 CIRCLE_NODE_INDEX=3
@@ -898,6 +910,19 @@ run package dists="prebuilt/*.zip"
 check "a dists pattern that matches nothing fails" rc_is 1
 run package dists="pyproject.toml"
 check "a file that isn't a distribution is refused" rc_is 1
+printf 'sdist\n' > "${JOB}/prebuilt/demo-2.0.tar.gz"
+run package twine=false dists="prebuilt/*.tar.gz"
+check "with twine off, sdists alone would be checked by nothing, which fails" rc_is 1
+check "saying so" said "twine is false and dists names no wheel"
+check "before running check-wheel-contents" no_call check-wheel-contents "${JOB}/prebuilt/demo-2.0.tar.gz"
+run package output_dir="${WORK}/kept"
+run package output_dir="${WORK}/kept" dists="${WORK}/kept/package-dist/*.whl"
+check "dists can name the distributions an earlier build kept with the reports" rc_is 0
+check "which are still there" test -f "${WORK}/kept/package-dist/demo-1.0-py3-none-any.whl"
+run package output_dir="${WORK}/kept" dists="${WORK}/kept/package-dist/*.whl" twine=false check_wheel_contents=false
+check "even when the run stops on its parameters" test -f "${WORK}/kept/package-dist/demo-1.0-py3-none-any.whl"
+run package output_dir="${WORK}/kept" -- STUB_UV_NO_WHEEL=1
+check "a new build replaces what an earlier one kept" test ! -e "${WORK}/kept/package-dist/demo-1.0-py3-none-any.whl"
 run package twine=false check_wheel_contents=false
 check "turning both checks off is refused" rc_is 1
 run package twine=false -- STUB_TWINE_FAIL='*'

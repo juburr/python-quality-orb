@@ -31,7 +31,6 @@ JUNIT_FILE="${PQ_OUT%/}/junit/${REPORT_NAME}.xml"
 RECORD="${PQ_BASE}.run-record.json"
 DIST_KEEP="${PQ_BASE}-dist"
 rm -f "${REPORT}" "${JUNIT_FILE}" "${RECORD}"
-rm -rf "${DIST_KEEP:?}"
 
 pq_list dists "${PARAM_DISTS}"
 DISTS_PARAM=(${PQ_LIST[@]+"${PQ_LIST[@]}"})
@@ -116,6 +115,10 @@ else
         BUILD_ARGS+=(--no-sources)
     fi
     BUILD_ARGS+=(${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"})
+    # An earlier build's distributions go first, so only this build's are
+    # stored with the reports. With dists, that directory is left alone: it
+    # can hold the very distributions named.
+    rm -rf "${DIST_KEEP:?}"
     echo "Building with uv ${UV_VERSION:-(version unknown)}:"
     pq_show_command uv "${BUILD_ARGS[@]}" | sed 's/^/  /'
     build_code=0
@@ -144,6 +147,14 @@ else
 fi
 if [[ "${#DISTS[@]}" -eq 0 ]]; then
     echo "ERROR: There is no distribution to check." >&2
+    exit 1
+fi
+# check-wheel-contents reads wheels only, so without twine an sdist alone
+# would be checked by nothing.
+if [[ "${TWINE}" != true ]] && ! printf '%s\n' "${DISTS[@]}" | grep -q '\.whl$'; then
+    echo "ERROR: twine is false and dists names no wheel, so nothing would check these distributions:" >&2
+    printf '  %s\n' "${DISTS[@]}" >&2
+    echo "  check-wheel-contents reads wheels only. Set twine to true, or name the wheels in dists." >&2
     exit 1
 fi
 # Absolute and normalized, as both checkers print the path back.

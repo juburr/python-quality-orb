@@ -138,14 +138,35 @@ if [[ "${SPLIT_TESTS}" == true && "${NODES}" -gt 1 ]]; then
     fi
     echo "Collecting the tests to split them across ${NODES} nodes:"
     code=0
-    "${PY}" -m pytest --collect-only -q -p no:cacheprovider ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
-        ${PATHS[@]+"${PATHS[@]}"} > "${WORK}/collect.log" 2>&1 || code=$?
-    if [[ "${code}" -ne 0 && "${code}" -ne 5 ]]; then
+    # --verbosity=-1, after the project's addopts, PYTEST_ADDOPTS and
+    # extra_args, makes pytest list one node ID per line whatever -q or -v
+    # they hold: at -2 it would list files with counts instead.
+    "${PY}" -m pytest --collect-only -p no:cacheprovider ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
+        --verbosity=-1 ${PATHS[@]+"${PATHS[@]}"} > "${WORK}/collect.log" 2>&1 || code=$?
+    if [[ "${code}" -eq 5 ]]; then
+        if [[ "${ALLOW_EMPTY}" == true ]]; then
+            echo "Passed: pytest collected no test, which allow_empty allows."
+            exit 0
+        fi
+        pq_tail "${WORK}/collect.log" 10
+        echo "ERROR: pytest collected no test in ${PATHS[*]:-$(pwd)}, so nothing would be tested. Check paths and" >&2
+        echo "  pytest's testpaths and python_files settings, or set allow_empty to true." >&2
+        exit 1
+    fi
+    if [[ "${code}" -ne 0 ]]; then
         pq_tail "${WORK}/collect.log" 30
         echo "ERROR: pytest could not collect the tests (exit code ${code}), so they can't be split." >&2
         exit 1
     fi
     awk -F'::' '/::/ { print $1 }' "${WORK}/collect.log" | LC_ALL=C sort -u > "${WORK}/files.txt"
+    # A collection that found tests but listed no node ID can't be split: an
+    # empty list would pass every node without running anything.
+    if [[ ! -s "${WORK}/files.txt" ]]; then
+        pq_tail "${WORK}/collect.log" 20
+        echo "ERROR: pytest collected tests but listed no node ID (path::test) to split them by, so this node's share" >&2
+        echo "  is unknown. A plugin or option may have changed pytest's --collect-only output." >&2
+        exit 1
+    fi
     split_code=0
     circleci tests split --split-by=timings --timings-type=filename < "${WORK}/files.txt" > "${WORK}/share.txt" \
         2> "${WORK}/split.log" || split_code=$?
