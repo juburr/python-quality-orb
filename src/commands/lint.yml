@@ -1,0 +1,107 @@
+description: >
+  Lints Python code with Ruff (ruff check), without changing any file: the
+  rules Ruff's configuration (ruff.toml, .ruff.toml or [tool.ruff] in
+  pyproject.toml) selects, or Ruff's defaults. Every diagnostic is a
+  finding, which fails the step unless report_only is true; a file Ruff
+  couldn't parse or read, or no Python file to check, fails it either way,
+  since that code went unchecked. A configured fix = true never applies,
+  and the job's RUFF_* variables are ignored. Writes the findings as JSON,
+  SARIF (for GitHub code scanning) and JUnit. Run install (tools: ruff)
+  first.
+parameters:
+  working_dir:
+    type: string
+    default: "."
+    description: The directory to run in. paths and config are relative to it.
+  paths:
+    type: string
+    default: ""
+    description: >
+      The files and directories to lint, separated by commas or spaces.
+      Leave empty for Ruff's default: the working directory, as its include
+      and exclude settings select. Environment variables are expanded.
+  config:
+    type: string
+    default: ""
+    description: >
+      A Ruff configuration file to use instead of the one Ruff finds.
+      Environment variables are expanded.
+  allow_empty:
+    type: boolean
+    default: false
+    description: Pass when Ruff finds no Python file to check, instead of failing.
+  extra_args:
+    type: string
+    default: ""
+    description: >
+      Further options for ruff check, such as --select=E,F,B or
+      --target-version=py311. They are split like shell words, but nothing
+      in them is expanded or run. Options the command sets itself, and those
+      that would change files, hide Ruff's warnings or report elsewhere, are
+      refused. Environment variables are expanded.
+  report_name:
+    type: string
+    default: lint
+    description: >
+      The reports' file name without its extension: <report_name>.json
+      (Ruff's diagnostics, with their rule, location and URL) and
+      <report_name>.sarif. Letters, digits, '.', '_' and '-'.
+  output_dir:
+    type: string
+    default: /tmp/python-quality-reports
+    description: >
+      Absolute path of the directory to write the reports into. Environment
+      variables are not expanded, since the path is also passed to
+      store_artifacts and store_test_results.
+  junit:
+    type: boolean
+    default: true
+    description: >
+      Write the findings as JUnit (output_dir/junit/<report_name>.xml), and
+      store it with store_test_results for CircleCI's Tests tab.
+  run_record:
+    type: boolean
+    default: false
+    description: >
+      Also write a run record (<report_name>.run-record.json): what was
+      checked, with which tool and settings, and what it found.
+  report_only:
+    type: boolean
+    default: false
+    description: >
+      Report findings without failing the step, to adopt the check
+      gradually. A check that couldn't run, or that checked nothing, still
+      fails it.
+  store_artifacts:
+    type: boolean
+    default: true
+    description: Store output_dir as job artifacts under python-quality-reports/, including when the step fails.
+steps:
+  - run:
+      name: ruff check (<< parameters.report_name >>)
+      working_directory: << parameters.working_dir >>
+      environment:
+        PARAM_ALLOW_EMPTY: << parameters.allow_empty >>
+        PARAM_CONFIG: << parameters.config >>
+        PARAM_EXTRA_ARGS: << parameters.extra_args >>
+        PARAM_JUNIT: << parameters.junit >>
+        PARAM_OUTPUT_DIR: << parameters.output_dir >>
+        PARAM_PATHS: << parameters.paths >>
+        PARAM_REPORT_NAME: << parameters.report_name >>
+        PARAM_REPORT_ONLY: << parameters.report_only >>
+        PARAM_RUN_RECORD: << parameters.run_record >>
+        SCRIPT_PYTHON_QUALITY_LIB: << include(scripts/lib/python_quality.sh) >>
+      command: << include(scripts/lint.sh) >>
+  - when:
+      condition: << parameters.junit >>
+      steps:
+        - store_test_results:
+            path: << parameters.output_dir >>/junit/<< parameters.report_name >>.xml
+            when: always
+  - when:
+      condition: << parameters.store_artifacts >>
+      steps:
+        - store_artifacts:
+            path: << parameters.output_dir >>
+            destination: python-quality-reports
+            when: always

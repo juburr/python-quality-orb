@@ -1,0 +1,124 @@
+description: >
+  Finds changes to a Python package's public API that break its callers,
+  with Griffe: it reads the API from the working tree and from a base
+  revision, without importing the code, and reports removed objects,
+  parameters removed, moved, made required or given another kind or
+  default, incompatible return and attribute types, and removed base
+  classes. Each breaking change is a finding, which fails the step unless
+  report_only is true; a package that isn't at the base yet passes as new,
+  and one Griffe can't load fails the step either way. Needs the base in the
+  checkout (actions/checkout: fetch-depth: 0). Writes the findings as JSON,
+  SARIF and JUnit. Run install (tools: griffe) first.
+parameters:
+  working_dir:
+    type: string
+    default: "."
+    description: The project's root, to run in. search_paths are relative to it.
+  package:
+    type: string
+    default: ""
+    description: >
+      The import packages to compare, separated by commas or spaces, such as
+      mypackage. Leave empty for the package named after pyproject.toml's
+      project name, in src/ or at the top. Environment variables are
+      expanded.
+  search_paths:
+    type: string
+    default: ""
+    description: >
+      The directories the packages are in, relative to the working
+      directory, separated by commas or spaces. Leave empty for src (when it
+      exists) and the working directory. Environment variables are expanded.
+  base_ref:
+    type: string
+    default: ""
+    description: >
+      The branch, tag or commit to compare with. Leave empty for the pull
+      request's base branch on GitHub Actions (origin/$GITHUB_BASE_REF),
+      and elsewhere the remote's default branch (origin/HEAD, origin/main or
+      origin/master). Environment variables are expanded, so a tag can come
+      from a variable.
+  merge_base:
+    type: boolean
+    default: true
+    description: >
+      Compare with the merge base of base_ref and HEAD, so changes made on
+      the base branch since are not reported. Set it to false to compare
+      with base_ref itself, such as the last release's tag.
+  ignore:
+    type: string
+    default: ""
+    description: >
+      Objects whose breaking changes are expected, by their Python path or a
+      glob of it, such as mypackage._compat.* or mypackage.old_function,
+      separated by commas or spaces. They are counted, not reported.
+      Environment variables are expanded.
+  report_name:
+    type: string
+    default: api_compat
+    description: >
+      The reports' file name without its extension: <report_name>.json (the
+      breaking changes, with the object, the old and new values and an
+      explanation) and <report_name>.sarif. Letters, digits, '.', '_' and
+      '-'.
+  output_dir:
+    type: string
+    default: /tmp/python-quality-reports
+    description: >
+      Absolute path of the directory to write the reports into. Environment
+      variables are not expanded, since the path is also passed to
+      store_artifacts and store_test_results.
+  junit:
+    type: boolean
+    default: true
+    description: >
+      Write the findings as JUnit (output_dir/junit/<report_name>.xml), and
+      store it with store_test_results for CircleCI's Tests tab.
+  run_record:
+    type: boolean
+    default: false
+    description: >
+      Also write a run record (<report_name>.run-record.json): what was
+      checked, with which tool and settings, and what it found.
+  report_only:
+    type: boolean
+    default: false
+    description: >
+      Report findings without failing the step, to adopt the check
+      gradually. A check that couldn't run, or that checked nothing, still
+      fails it.
+  store_artifacts:
+    type: boolean
+    default: true
+    description: Store output_dir as job artifacts under python-quality-reports/, including when the step fails.
+steps:
+  - run:
+      name: griffe (<< parameters.report_name >>)
+      working_directory: << parameters.working_dir >>
+      environment:
+        PARAM_BASE_REF: << parameters.base_ref >>
+        PARAM_IGNORE: << parameters.ignore >>
+        PARAM_JUNIT: << parameters.junit >>
+        PARAM_MERGE_BASE: << parameters.merge_base >>
+        PARAM_OUTPUT_DIR: << parameters.output_dir >>
+        PARAM_PACKAGE: << parameters.package >>
+        PARAM_REPORT_NAME: << parameters.report_name >>
+        PARAM_REPORT_ONLY: << parameters.report_only >>
+        PARAM_RUN_RECORD: << parameters.run_record >>
+        PARAM_SEARCH_PATHS: << parameters.search_paths >>
+        SCRIPT_PYTHON_QUALITY_LIB: << include(scripts/lib/python_quality.sh) >>
+        SCRIPT_PYTHON_QUALITY_PY: << include(scripts/lib/python_quality.py) >>
+      command: << include(scripts/api_compat.sh) >>
+  - when:
+      condition: << parameters.junit >>
+      steps:
+        - store_test_results:
+            path: << parameters.output_dir >>/junit/<< parameters.report_name >>.xml
+            when: always
+  - when:
+      condition: << parameters.store_artifacts >>
+      steps:
+        - store_artifacts:
+            path: << parameters.output_dir >>
+            destination: python-quality-reports
+            when: always

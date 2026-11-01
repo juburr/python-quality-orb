@@ -1,0 +1,120 @@
+name: Find breaking Python API changes with Griffe
+description: >
+  Finds changes to a Python package's public API that break its callers, with
+  Griffe: it reads the API from the working tree and from a base revision,
+  without importing the code, and reports removed objects, parameters removed,
+  moved, made required or given another kind or default, incompatible return and
+  attribute types, and removed base classes. Each breaking change is a finding,
+  which fails the step unless report_only is true; a package that isn't at the
+  base yet passes as new, and one Griffe can't load fails the step either way.
+  Needs the base in the checkout (actions/checkout: fetch-depth: 0). Writes the
+  findings as JSON, SARIF and JUnit. Run the install action (tools: griffe)
+  first. The GitHub Actions twin of the orb's api_compat command.
+author: juburr
+
+inputs:
+  working_dir:
+    description: >
+      The project's root, to run in. search_paths are relative to it.
+    default: .
+  package:
+    description: >
+      The import packages to compare, separated by commas or spaces, such as
+      mypackage. Leave empty for the package named after pyproject.toml's project
+      name, in src/ or at the top.
+    default: ""
+  search_paths:
+    description: >
+      The directories the packages are in, relative to the working directory,
+      separated by commas or spaces. Leave empty for src (when it exists) and the
+      working directory.
+    default: ""
+  base_ref:
+    description: >
+      The branch, tag or commit to compare with. Leave empty for the pull request's
+      base branch on GitHub Actions (origin/$GITHUB_BASE_REF), and elsewhere the
+      remote's default branch (origin/HEAD, origin/main or origin/master).
+    default: ""
+  merge_base:
+    description: >
+      Compare with the merge base of base_ref and HEAD, so changes made on the base
+      branch since are not reported. Set it to false to compare with base_ref
+      itself, such as the last release's tag.
+    default: "true"
+  ignore:
+    description: >
+      Objects whose breaking changes are expected, by their Python path or a glob of
+      it, such as mypackage._compat.* or mypackage.old_function, separated by commas
+      or spaces. They are counted, not reported.
+    default: ""
+  report_name:
+    description: >
+      The reports' file name without its extension: <report_name>.json (the breaking
+      changes, with the object, the old and new values and an explanation) and
+      <report_name>.sarif. Letters, digits, '.', '_' and '-'.
+    default: api_compat
+  output_dir:
+    description: >
+      Absolute path of the directory to write the reports into.
+    default: /tmp/python-quality-reports
+  junit:
+    description: >
+      Write the findings as JUnit (output_dir/junit/<report_name>.xml).
+    default: "true"
+  run_record:
+    description: >
+      Also write a run record (<report_name>.run-record.json): what was checked,
+      with which tool and settings, and what it found.
+    default: "false"
+  report_only:
+    description: >
+      Report findings without failing the step, to adopt the check gradually. A
+      check that couldn't run, or that checked nothing, still fails it.
+    default: "false"
+  store_artifacts:
+    description: >
+      Upload output_dir as a workflow artifact named
+      python-quality-reports-<report_name>-<random>, including when the step fails.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Artifact names must be unique in a workflow run, and the same command
+    # can run in several jobs or matrix legs, so the name ends in a random
+    # suffix.
+    - name: Name the reports artifact
+      id: artifact
+      if: (inputs.store_artifacts == 'true' || inputs.store_artifacts == '1')
+      shell: bash
+      env:
+        REPORT_NAME: ${{ inputs.report_name }}
+      run: |
+        if [[ ! "${REPORT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            REPORT_NAME=reports
+        fi
+        printf 'name=python-quality-reports-%s-%s\n' "${REPORT_NAME}" "$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')" >> "${GITHUB_OUTPUT}"
+    - name: griffe
+      shell: bash
+      working-directory: ${{ inputs.working_dir }}
+      env:
+        PARAM_BASE_REF: ${{ inputs.base_ref }}
+        PARAM_IGNORE: ${{ inputs.ignore }}
+        PARAM_JUNIT: ${{ inputs.junit }}
+        PARAM_MERGE_BASE: ${{ inputs.merge_base }}
+        PARAM_OUTPUT_DIR: ${{ inputs.output_dir }}
+        PARAM_PACKAGE: ${{ inputs.package }}
+        PARAM_REPORT_NAME: ${{ inputs.report_name }}
+        PARAM_REPORT_ONLY: ${{ inputs.report_only }}
+        PARAM_RUN_RECORD: ${{ inputs.run_record }}
+        PARAM_SEARCH_PATHS: ${{ inputs.search_paths }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/api_compat.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh" "SCRIPT_PYTHON_QUALITY_PY=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.py"
+    - name: Upload the reports
+      if: always() && (inputs.store_artifacts == 'true' || inputs.store_artifacts == '1')
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: ${{ inputs.output_dir }}
+        if-no-files-found: ignore

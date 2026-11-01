@@ -1,0 +1,26 @@
+description: >
+  Build a project's sdist and wheel with uv, check them with twine and
+  check-wheel-contents, and keep them in dist for a publish step.
+
+usage:
+  version: 2.1
+  orbs:
+    python-quality: juburr/python-quality-orb@0.1.0
+  jobs:
+    package:
+      docker:
+        - image: cimg/base:current
+      steps:
+        - checkout
+        - python-quality/install:
+            tools: uv,twine,check-wheel-contents
+        - python-quality/package:
+            out_dir: dist
+        - persist_to_workspace:
+            root: .
+            paths:
+              - dist
+  workflows:
+    package:
+      jobs:
+        - package

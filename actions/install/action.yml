@@ -1,0 +1,550 @@
+name: Install the Python quality tools
+description: >
+  Installs the Python quality tools named in tools, through the install command
+  for each (install_ruff, install_ty, install_uv, install_python, install_mypy,
+  install_pyright, install_deptry, install_griffe, install_twine,
+  install_check_wheel_contents), which can also be used on their own. Ruff, ty
+  and uv are release binaries verified against this orb's checksum tables. The
+  others are installed with uv, each into an environment of its own on a CPython
+  uv checks against the SHA-256 it carries, from this orb's lock for the
+  release, which pins every file to its SHA-256. Run this before the orb's other
+  commands. The test command needs none of them: it runs pytest and coverage in
+  the project's own environment. The GitHub Actions twin of the orb's install
+  command.
+author: juburr
+
+inputs:
+  tools:
+    description: >
+      The tools to install, separated by commas or spaces: any of ruff (for fmt and
+      lint), ty (for ty), mypy (for mypy), pyright (for pyright), deptry (for deps),
+      griffe (for api_compat), twine and check-wheel-contents (for package, with
+      uv), uv, and python (the Python the tools run on, alone). uv is installed
+      whenever a tool that needs it is. An unknown name fails the step.
+    default: "ruff,mypy"
+  ruff_version:
+    description: >
+      The Ruff release, when tools names it.
+    default: "0.17.2"
+  ty_version:
+    description: >
+      The ty release, when tools names it.
+    default: "0.0.91"
+  mypy_version:
+    description: >
+      The mypy release, when tools names it.
+    default: "2.4.0"
+  pyright_version:
+    description: >
+      The Pyright release, when tools names it.
+    default: "1.1.414"
+  deptry_version:
+    description: >
+      The deptry release, when tools names it.
+    default: "0.25.1"
+  griffe_version:
+    description: >
+      The Griffe release, when tools names it.
+    default: "2.4.1"
+  twine_version:
+    description: >
+      The twine release, when tools names it.
+    default: "7.0.0"
+  check_wheel_contents_version:
+    description: >
+      The check-wheel-contents release, when tools names it.
+    default: "0.6.3"
+  uv_version:
+    description: >
+      The uv release, when tools names uv, python or a tool installed with it.
+    default: "0.13.6"
+  python:
+    description: >
+      The Python the tools installed with uv run on: 3.11 to 3.14 for a CPython that
+      uv downloads and checks against the SHA-256 it carries for that build,
+      "system" for the python3 on the PATH, or an interpreter's absolute path. It is
+      not the project's Python, which the checks take as their environment
+      parameter.
+    default: "3.14"
+  index_url:
+    description: >
+      The package index to download the tools installed with uv from, such as a PyPI
+      mirror: an https:// URL, without credentials or a query or fragment. The
+      locks' hashes decide what is installed.
+    default: "https://pypi.org/simple"
+  python_install_mirror:
+    description: >
+      Base URL of a mirror of uv's Python downloads, https:// or file://. uv still
+      checks every download against the SHA-256 it carries.
+    default: ""
+  download_base_url:
+    description: >
+      Base URL of an internal mirror of GitHub releases to download Ruff, ty and uv
+      from instead of https://github.com, such as an Artifactory or Nexus remote
+      repository: an https:// URL, without credentials or a query or fragment.
+    default: ""
+  caching:
+    description: >
+      Cache the verified releases and the Python archive uv downloads between jobs.
+      Each is checked again whenever it is used. Installed environments and packages
+      are never cached.
+    default: "true"
+  install_path:
+    description: >
+      Absolute path of the directory to install the tools, and the scripts that run
+      those installed with uv, into. It is added to the PATH of later steps when it
+      isn't already on it. Defaults to $HOME/.python-quality-orb/bin.
+    default: ""
+  verify_checksums:
+    description: >
+      Verification of Ruff, ty and uv against this orb's checksum tables, and of
+      each tool installed with uv against this orb's lock for its release. "strict"
+      (default) fails before downloading anything when a version has no checksum or
+      lock. "known_versions" installs unlisted versions unverified, with a warning.
+      "false" skips verification and is not recommended.
+    default: strict
+
+runs:
+  using: composite
+  steps:
+    - name: Check the tools to install
+      id: tools
+      shell: bash
+      env:
+        PARAM_TOOLS: ${{ inputs.tools }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/install_tools.sh"
+        # The names, space-separated with a space on either side, for the
+        # if: conditions below.
+        read -r -a tools <<< "${PARAM_TOOLS//,/ }"
+        printf 'list= %s \n' "${tools[*]}" >> "${GITHUB_OUTPUT}"
+        # uv, when it or a tool installed with it is named.
+        uv=false
+        for tool in "${tools[@]}"; do
+            case "${tool}" in
+                uv | python | mypy | pyright | deptry | griffe | twine | check-wheel-contents) uv=true ;;
+            esac
+        done
+        printf 'uv=%s\n' "${uv}" >> "${GITHUB_OUTPUT}"
+    # The key is computed from a file that names the CPU (uname -m), HOME (a
+    # cache is restored to the absolute path it was saved from) and the
+    # version, as the orb's command computes it.
+    - name: Prepare Ruff cache key
+      id: ruff-cache-key
+      if: contains(steps.tools.outputs.list, ' ruff ') && (inputs.caching == 'true' || inputs.caching == '1')
+      shell: bash
+      env:
+        ORB_CACHE_KEY_FILE: ${{ runner.temp }}/python-quality-orb-ruff-cache-key
+        PARAM_VERSION: ${{ inputs.ruff_version }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../../src/scripts/cache_key.sh"
+        # Bump the version in the key when an existing checksum table entry
+        # changes, so caches saved for the old bytes stop being restored.
+        printf 'key=python-quality-orb-ruff-v1-%s\n' "$(sha256sum < "${ORB_CACHE_KEY_FILE}" | cut -c1-64)" >> "${GITHUB_OUTPUT}"
+    - name: Restore the Ruff cache
+      id: ruff-restore
+      if: contains(steps.tools.outputs.list, ' ruff ') && (inputs.caching == 'true' || inputs.caching == '1')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb-ruff
+        key: ${{ steps.ruff-cache-key.outputs.key }}
+    - name: Install Ruff
+      if: contains(steps.tools.outputs.list, ' ruff ')
+      shell: bash
+      env:
+        PARAM_CACHING: ${{ inputs.caching }}
+        PARAM_DOWNLOAD_BASE_URL: ${{ inputs.download_base_url }}
+        PARAM_INSTALL_PATH: ${{ inputs.install_path }}
+        PARAM_VERIFY_CHECKSUMS: ${{ inputs.verify_checksums }}
+        PARAM_VERSION: ${{ inputs.ruff_version }}
+      run: bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/install/ruff/install.sh"
+    # A saved cache can't be replaced, so it is only saved when none was
+    # restored. Like the orb's save_cache, it is saved right after the
+    # install, not at the end of the job.
+    - name: Save the Ruff cache
+      if: contains(steps.tools.outputs.list, ' ruff ') && (inputs.caching == 'true' || inputs.caching == '1') && steps.ruff-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb-ruff
+        key: ${{ steps.ruff-cache-key.outputs.key }}
+    # The key is computed from a file that names the CPU (uname -m), HOME (a
+    # cache is restored to the absolute path it was saved from) and the
+    # version, as the orb's command computes it.
+    - name: Prepare ty cache key
+      id: ty-cache-key
+      if: contains(steps.tools.outputs.list, ' ty ') && (inputs.caching == 'true' || inputs.caching == '1')
+      shell: bash
+      env:
+        ORB_CACHE_KEY_FILE: ${{ runner.temp }}/python-quality-orb-ty-cache-key
+        PARAM_VERSION: ${{ inputs.ty_version }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../../src/scripts/cache_key.sh"
+        # Bump the version in the key when an existing checksum table entry
+        # changes, so caches saved for the old bytes stop being restored.
+        printf 'key=python-quality-orb-ty-v1-%s\n' "$(sha256sum < "${ORB_CACHE_KEY_FILE}" | cut -c1-64)" >> "${GITHUB_OUTPUT}"
+    - name: Restore the ty cache
+      id: ty-restore
+      if: contains(steps.tools.outputs.list, ' ty ') && (inputs.caching == 'true' || inputs.caching == '1')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb-ty
+        key: ${{ steps.ty-cache-key.outputs.key }}
+    - name: Install ty
+      if: contains(steps.tools.outputs.list, ' ty ')
+      shell: bash
+      env:
+        PARAM_CACHING: ${{ inputs.caching }}
+        PARAM_DOWNLOAD_BASE_URL: ${{ inputs.download_base_url }}
+        PARAM_INSTALL_PATH: ${{ inputs.install_path }}
+        PARAM_VERIFY_CHECKSUMS: ${{ inputs.verify_checksums }}
+        PARAM_VERSION: ${{ inputs.ty_version }}
+      run: bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/install/ty/install.sh"
+    # A saved cache can't be replaced, so it is only saved when none was
+    # restored. Like the orb's save_cache, it is saved right after the
+    # install, not at the end of the job.
+    - name: Save the ty cache
+      if: contains(steps.tools.outputs.list, ' ty ') && (inputs.caching == 'true' || inputs.caching == '1') && steps.ty-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb-ty
+        key: ${{ steps.ty-cache-key.outputs.key }}
+    # The key is computed from a file that names the CPU (uname -m), HOME (a
+    # cache is restored to the absolute path it was saved from) and the
+    # version, as the orb's command computes it.
+    - name: Prepare uv cache key
+      id: uv-cache-key
+      if: steps.tools.outputs.uv == 'true' && (inputs.caching == 'true' || inputs.caching == '1')
+      shell: bash
+      env:
+        ORB_CACHE_KEY_FILE: ${{ runner.temp }}/python-quality-orb-uv-cache-key
+        PARAM_VERSION: ${{ inputs.uv_version }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../../src/scripts/cache_key.sh"
+        # Bump the version in the key when an existing checksum table entry
+        # changes, so caches saved for the old bytes stop being restored.
+        printf 'key=python-quality-orb-uv-v1-%s\n' "$(sha256sum < "${ORB_CACHE_KEY_FILE}" | cut -c1-64)" >> "${GITHUB_OUTPUT}"
+    - name: Restore the uv cache
+      id: uv-restore
+      if: steps.tools.outputs.uv == 'true' && (inputs.caching == 'true' || inputs.caching == '1')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb-uv
+        key: ${{ steps.uv-cache-key.outputs.key }}
+    - name: Install uv
+      if: steps.tools.outputs.uv == 'true'
+      shell: bash
+      env:
+        PARAM_CACHING: ${{ inputs.caching }}
+        PARAM_DOWNLOAD_BASE_URL: ${{ inputs.download_base_url }}
+        PARAM_INSTALL_PATH: ${{ inputs.install_path }}
+        PARAM_VERIFY_CHECKSUMS: ${{ inputs.verify_checksums }}
+        PARAM_VERSION: ${{ inputs.uv_version }}
+      run: bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/install/uv/install.sh"
+    # A saved cache can't be replaced, so it is only saved when none was
+    # restored. Like the orb's save_cache, it is saved right after the
+    # install, not at the end of the job.
+    - name: Save the uv cache
+      if: steps.tools.outputs.uv == 'true' && (inputs.caching == 'true' || inputs.caching == '1') && steps.uv-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb-uv
+        key: ${{ steps.uv-cache-key.outputs.key }}
+    # uv checks a cached Python archive against the SHA-256 it carries
+    # whenever it unpacks it, so the cache is never trusted on its own.
+    - name: Prepare Python cache key
+      id: python-cache-key
+      if: contains(steps.tools.outputs.list, ' python ') && (inputs.caching == 'true' || inputs.caching == '1')
+      shell: bash
+      env:
+        ORB_CACHE_KEY_FILE: ${{ runner.temp }}/python-quality-orb-python-cache-key
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_UV_VERSION: ${{ inputs.uv_version }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../../src/scripts/python_cache_key.sh"
+        printf 'key=python-quality-orb-python-v1-%s\n' "$(sha256sum < "${ORB_CACHE_KEY_FILE}" | cut -c1-64)" >> "${GITHUB_OUTPUT}"
+    - name: Restore the Python cache
+      id: python-restore
+      if: contains(steps.tools.outputs.list, ' python ') && (inputs.caching == 'true' || inputs.caching == '1')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.python-cache-key.outputs.key }}
+    - name: Install Python
+      if: contains(steps.tools.outputs.list, ' python ')
+      shell: bash
+      env:
+        PARAM_CACHING: ${{ inputs.caching }}
+        PARAM_INDEX_URL: ""
+        PARAM_INSTALL_PATH: ${{ inputs.install_path }}
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_PYTHON_INSTALL_MIRROR: ${{ inputs.python_install_mirror }}
+        PARAM_TOOL: python
+        PARAM_VERIFY_CHECKSUMS: ${{ inputs.verify_checksums }}
+        PARAM_VERSION: ""
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/install_tool.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh"
+    - name: Save the Python cache
+      if: >-
+        contains(steps.tools.outputs.list, ' python ') && (inputs.caching == 'true' || inputs.caching == '1') &&
+        steps.python-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.python-cache-key.outputs.key }}
+    # uv checks a cached Python archive against the SHA-256 it carries
+    # whenever it unpacks it, so the cache is never trusted on its own.
+    - name: Prepare Python cache key
+      id: mypy-cache-key
+      if: contains(steps.tools.outputs.list, ' mypy ') && (inputs.caching == 'true' || inputs.caching == '1')
+      shell: bash
+      env:
+        ORB_CACHE_KEY_FILE: ${{ runner.temp }}/python-quality-orb-python-cache-key
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_UV_VERSION: ${{ inputs.uv_version }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../../src/scripts/python_cache_key.sh"
+        printf 'key=python-quality-orb-python-v1-%s\n' "$(sha256sum < "${ORB_CACHE_KEY_FILE}" | cut -c1-64)" >> "${GITHUB_OUTPUT}"
+    - name: Restore the Python cache
+      id: mypy-restore
+      if: contains(steps.tools.outputs.list, ' mypy ') && (inputs.caching == 'true' || inputs.caching == '1')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.mypy-cache-key.outputs.key }}
+    - name: Install mypy
+      if: contains(steps.tools.outputs.list, ' mypy ')
+      shell: bash
+      env:
+        PARAM_CACHING: ${{ inputs.caching }}
+        PARAM_INDEX_URL: ${{ inputs.index_url }}
+        PARAM_INSTALL_PATH: ${{ inputs.install_path }}
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_PYTHON_INSTALL_MIRROR: ${{ inputs.python_install_mirror }}
+        PARAM_TOOL: mypy
+        PARAM_VERIFY_CHECKSUMS: ${{ inputs.verify_checksums }}
+        PARAM_VERSION: ${{ inputs.mypy_version }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/install_tool.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh" "SCRIPT_TOOL_LOCKS=${GITHUB_ACTION_PATH}/../../src/install/mypy/locks.txt"
+    - name: Save the Python cache
+      if: contains(steps.tools.outputs.list, ' mypy ') && (inputs.caching == 'true' || inputs.caching == '1') && steps.mypy-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.mypy-cache-key.outputs.key }}
+    # uv checks a cached Python archive against the SHA-256 it carries
+    # whenever it unpacks it, so the cache is never trusted on its own.
+    - name: Prepare Python cache key
+      id: pyright-cache-key
+      if: contains(steps.tools.outputs.list, ' pyright ') && (inputs.caching == 'true' || inputs.caching == '1')
+      shell: bash
+      env:
+        ORB_CACHE_KEY_FILE: ${{ runner.temp }}/python-quality-orb-python-cache-key
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_UV_VERSION: ${{ inputs.uv_version }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../../src/scripts/python_cache_key.sh"
+        printf 'key=python-quality-orb-python-v1-%s\n' "$(sha256sum < "${ORB_CACHE_KEY_FILE}" | cut -c1-64)" >> "${GITHUB_OUTPUT}"
+    - name: Restore the Python cache
+      id: pyright-restore
+      if: contains(steps.tools.outputs.list, ' pyright ') && (inputs.caching == 'true' || inputs.caching == '1')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.pyright-cache-key.outputs.key }}
+    - name: Install Pyright
+      if: contains(steps.tools.outputs.list, ' pyright ')
+      shell: bash
+      env:
+        PARAM_CACHING: ${{ inputs.caching }}
+        PARAM_INDEX_URL: ${{ inputs.index_url }}
+        PARAM_INSTALL_PATH: ${{ inputs.install_path }}
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_PYTHON_INSTALL_MIRROR: ${{ inputs.python_install_mirror }}
+        PARAM_TOOL: pyright
+        PARAM_VERIFY_CHECKSUMS: ${{ inputs.verify_checksums }}
+        PARAM_VERSION: ${{ inputs.pyright_version }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/install_tool.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh" "SCRIPT_TOOL_LOCKS=${GITHUB_ACTION_PATH}/../../src/install/pyright/locks.txt"
+    - name: Save the Python cache
+      if: >-
+        contains(steps.tools.outputs.list, ' pyright ') && (inputs.caching == 'true' || inputs.caching == '1') &&
+        steps.pyright-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.pyright-cache-key.outputs.key }}
+    # uv checks a cached Python archive against the SHA-256 it carries
+    # whenever it unpacks it, so the cache is never trusted on its own.
+    - name: Prepare Python cache key
+      id: deptry-cache-key
+      if: contains(steps.tools.outputs.list, ' deptry ') && (inputs.caching == 'true' || inputs.caching == '1')
+      shell: bash
+      env:
+        ORB_CACHE_KEY_FILE: ${{ runner.temp }}/python-quality-orb-python-cache-key
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_UV_VERSION: ${{ inputs.uv_version }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../../src/scripts/python_cache_key.sh"
+        printf 'key=python-quality-orb-python-v1-%s\n' "$(sha256sum < "${ORB_CACHE_KEY_FILE}" | cut -c1-64)" >> "${GITHUB_OUTPUT}"
+    - name: Restore the Python cache
+      id: deptry-restore
+      if: contains(steps.tools.outputs.list, ' deptry ') && (inputs.caching == 'true' || inputs.caching == '1')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.deptry-cache-key.outputs.key }}
+    - name: Install deptry
+      if: contains(steps.tools.outputs.list, ' deptry ')
+      shell: bash
+      env:
+        PARAM_CACHING: ${{ inputs.caching }}
+        PARAM_INDEX_URL: ${{ inputs.index_url }}
+        PARAM_INSTALL_PATH: ${{ inputs.install_path }}
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_PYTHON_INSTALL_MIRROR: ${{ inputs.python_install_mirror }}
+        PARAM_TOOL: deptry
+        PARAM_VERIFY_CHECKSUMS: ${{ inputs.verify_checksums }}
+        PARAM_VERSION: ${{ inputs.deptry_version }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/install_tool.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh" "SCRIPT_TOOL_LOCKS=${GITHUB_ACTION_PATH}/../../src/install/deptry/locks.txt"
+    - name: Save the Python cache
+      if: >-
+        contains(steps.tools.outputs.list, ' deptry ') && (inputs.caching == 'true' || inputs.caching == '1') &&
+        steps.deptry-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.deptry-cache-key.outputs.key }}
+    # uv checks a cached Python archive against the SHA-256 it carries
+    # whenever it unpacks it, so the cache is never trusted on its own.
+    - name: Prepare Python cache key
+      id: griffe-cache-key
+      if: contains(steps.tools.outputs.list, ' griffe ') && (inputs.caching == 'true' || inputs.caching == '1')
+      shell: bash
+      env:
+        ORB_CACHE_KEY_FILE: ${{ runner.temp }}/python-quality-orb-python-cache-key
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_UV_VERSION: ${{ inputs.uv_version }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../../src/scripts/python_cache_key.sh"
+        printf 'key=python-quality-orb-python-v1-%s\n' "$(sha256sum < "${ORB_CACHE_KEY_FILE}" | cut -c1-64)" >> "${GITHUB_OUTPUT}"
+    - name: Restore the Python cache
+      id: griffe-restore
+      if: contains(steps.tools.outputs.list, ' griffe ') && (inputs.caching == 'true' || inputs.caching == '1')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.griffe-cache-key.outputs.key }}
+    - name: Install Griffe
+      if: contains(steps.tools.outputs.list, ' griffe ')
+      shell: bash
+      env:
+        PARAM_CACHING: ${{ inputs.caching }}
+        PARAM_INDEX_URL: ${{ inputs.index_url }}
+        PARAM_INSTALL_PATH: ${{ inputs.install_path }}
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_PYTHON_INSTALL_MIRROR: ${{ inputs.python_install_mirror }}
+        PARAM_TOOL: griffe
+        PARAM_VERIFY_CHECKSUMS: ${{ inputs.verify_checksums }}
+        PARAM_VERSION: ${{ inputs.griffe_version }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/install_tool.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh" "SCRIPT_TOOL_LOCKS=${GITHUB_ACTION_PATH}/../../src/install/griffe/locks.txt"
+    - name: Save the Python cache
+      if: >-
+        contains(steps.tools.outputs.list, ' griffe ') && (inputs.caching == 'true' || inputs.caching == '1') &&
+        steps.griffe-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.griffe-cache-key.outputs.key }}
+    # uv checks a cached Python archive against the SHA-256 it carries
+    # whenever it unpacks it, so the cache is never trusted on its own.
+    - name: Prepare Python cache key
+      id: twine-cache-key
+      if: contains(steps.tools.outputs.list, ' twine ') && (inputs.caching == 'true' || inputs.caching == '1')
+      shell: bash
+      env:
+        ORB_CACHE_KEY_FILE: ${{ runner.temp }}/python-quality-orb-python-cache-key
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_UV_VERSION: ${{ inputs.uv_version }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../../src/scripts/python_cache_key.sh"
+        printf 'key=python-quality-orb-python-v1-%s\n' "$(sha256sum < "${ORB_CACHE_KEY_FILE}" | cut -c1-64)" >> "${GITHUB_OUTPUT}"
+    - name: Restore the Python cache
+      id: twine-restore
+      if: contains(steps.tools.outputs.list, ' twine ') && (inputs.caching == 'true' || inputs.caching == '1')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.twine-cache-key.outputs.key }}
+    - name: Install twine
+      if: contains(steps.tools.outputs.list, ' twine ')
+      shell: bash
+      env:
+        PARAM_CACHING: ${{ inputs.caching }}
+        PARAM_INDEX_URL: ${{ inputs.index_url }}
+        PARAM_INSTALL_PATH: ${{ inputs.install_path }}
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_PYTHON_INSTALL_MIRROR: ${{ inputs.python_install_mirror }}
+        PARAM_TOOL: twine
+        PARAM_VERIFY_CHECKSUMS: ${{ inputs.verify_checksums }}
+        PARAM_VERSION: ${{ inputs.twine_version }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/install_tool.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh" "SCRIPT_TOOL_LOCKS=${GITHUB_ACTION_PATH}/../../src/install/twine/locks.txt"
+    - name: Save the Python cache
+      if: >-
+        contains(steps.tools.outputs.list, ' twine ') && (inputs.caching == 'true' || inputs.caching == '1') &&
+        steps.twine-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.twine-cache-key.outputs.key }}
+    # uv checks a cached Python archive against the SHA-256 it carries
+    # whenever it unpacks it, so the cache is never trusted on its own.
+    - name: Prepare Python cache key
+      id: check-wheel-contents-cache-key
+      if: contains(steps.tools.outputs.list, ' check-wheel-contents ') && (inputs.caching == 'true' || inputs.caching == '1')
+      shell: bash
+      env:
+        ORB_CACHE_KEY_FILE: ${{ runner.temp }}/python-quality-orb-python-cache-key
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_UV_VERSION: ${{ inputs.uv_version }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/../../src/scripts/python_cache_key.sh"
+        printf 'key=python-quality-orb-python-v1-%s\n' "$(sha256sum < "${ORB_CACHE_KEY_FILE}" | cut -c1-64)" >> "${GITHUB_OUTPUT}"
+    - name: Restore the Python cache
+      id: check-wheel-contents-restore
+      if: contains(steps.tools.outputs.list, ' check-wheel-contents ') && (inputs.caching == 'true' || inputs.caching == '1')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.check-wheel-contents-cache-key.outputs.key }}
+    - name: Install check-wheel-contents
+      if: contains(steps.tools.outputs.list, ' check-wheel-contents ')
+      shell: bash
+      env:
+        PARAM_CACHING: ${{ inputs.caching }}
+        PARAM_INDEX_URL: ${{ inputs.index_url }}
+        PARAM_INSTALL_PATH: ${{ inputs.install_path }}
+        PARAM_PYTHON: ${{ inputs.python }}
+        PARAM_PYTHON_INSTALL_MIRROR: ${{ inputs.python_install_mirror }}
+        PARAM_TOOL: check-wheel-contents
+        PARAM_VERIFY_CHECKSUMS: ${{ inputs.verify_checksums }}
+        PARAM_VERSION: ${{ inputs.check_wheel_contents_version }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/install_tool.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh" "SCRIPT_TOOL_LOCKS=${GITHUB_ACTION_PATH}/../../src/install/check-wheel-contents/locks.txt"
+    - name: Save the Python cache
+      if: >-
+        contains(steps.tools.outputs.list, ' check-wheel-contents ') && (inputs.caching == 'true' || inputs.caching == '1') &&
+        steps.check-wheel-contents-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/python-quality-orb/python
+        key: ${{ steps.check-wheel-contents-cache-key.outputs.key }}

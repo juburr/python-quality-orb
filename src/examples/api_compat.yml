@@ -1,0 +1,25 @@
+description: >
+  Fail a pull request that changes the package's public API in a way that
+  breaks its callers, compared with where the branch left the default branch.
+  Griffe reads the code without importing it, so the project's environment
+  isn't needed.
+
+usage:
+  version: 2.1
+  orbs:
+    python-quality: juburr/python-quality-orb@0.1.0
+  jobs:
+    api:
+      docker:
+        - image: cimg/base:current
+      steps:
+        - checkout
+        - python-quality/install:
+            tools: griffe
+        - python-quality/api_compat:
+            package: mypackage
+            ignore: mypackage._internal.*
+  workflows:
+    api:
+      jobs:
+        - api

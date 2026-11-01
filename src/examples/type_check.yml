@@ -1,0 +1,27 @@
+description: >
+  Type-check a project with Pyright and ty, against the packages installed in
+  its environment, and upload nothing: the findings are in the Tests tab and
+  the SARIF reports in the job's artifacts.
+
+usage:
+  version: 2.1
+  orbs:
+    python-quality: juburr/python-quality-orb@0.1.0
+  jobs:
+    types:
+      docker:
+        - image: cimg/python:3.13
+      steps:
+        - checkout
+        - python-quality/install:
+            tools: uv,pyright,ty
+        - run:
+            name: Make the project's environment
+            command: uv sync
+        - python-quality/pyright
+        - python-quality/ty:
+            fail_on: error
+  workflows:
+    types:
+      jobs:
+        - types

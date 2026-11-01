@@ -1,0 +1,28 @@
+[
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {"column": 10, "row": 1},
+    "filename": "@JOB@/src/demo/__init__.py",
+    "fix": {"applicability": "safe", "edits": [{"content": "", "end_location": {"column": 1, "row": 2}, "location": {"column": 1, "row": 1}}], "message": "Remove unused import: `os`"},
+    "location": {"column": 8, "row": 1},
+    "message": "`os` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 1,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "E711",
+    "end_location": {"column": 20, "row": 4},
+    "filename": "@JOB@/src/demo/util.py",
+    "fix": null,
+    "location": {"column": 16, "row": 4},
+    "message": "Comparison to `None` should be `cond is None`",
+    "name": "none-comparison",
+    "noqa_row": 4,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/none-comparison"
+  }
+]

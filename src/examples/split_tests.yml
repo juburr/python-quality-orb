@@ -1,0 +1,26 @@
+description: >
+  Run a project's tests across four parallel nodes, each with its share of the
+  test files, split by the timings of earlier runs.
+
+usage:
+  version: 2.1
+  orbs:
+    python-quality: juburr/python-quality-orb@0.1.0
+  jobs:
+    test:
+      parallelism: 4
+      docker:
+        - image: cimg/python:3.13
+      steps:
+        - checkout
+        - run:
+            name: Make the project's environment
+            command: |
+              python -m venv .venv
+              .venv/bin/pip install -e . pytest
+        - python-quality/test:
+            split_tests: true
+  workflows:
+    test:
+      jobs:
+        - test

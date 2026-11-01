@@ -1,0 +1,57 @@
+# The mypy releases install_mypy installs with verify_checksums: strict,
+# newest first, each as a requirements file that pins mypy and every
+# dependency to one version with the SHA-256 of each wheel the orb can install
+# (CPython 3.11 to 3.14 on Linux x86_64 and aarch64, glibc or musl). uv
+# installs a block with --require-hashes, so a file whose hash isn't listed, or
+# a package the block doesn't pin, fails the install before anything runs.
+# mypy is compiled with mypyc, except on musl aarch64, which has only its pure-Python wheel.
+#
+# Add a release with:
+#   src/install/lock.sh -t mypy -v <version>
+# and paste its output at the top.
+
+# >>> mypy 2.4.0 >>>
+# mypy==2.4.0, resolved by uv 0.11.32 (x86_64-unknown-linux-gnu) from releases uploaded before 2026-10-24T00:00:00Z.
+ast-serialize==0.13.1 \
+    --hash=sha256:6ffb0f548a7dc126067fdfb7b2325ab5dfcdeecc29faf5e0f0461c96d6ebfa3d \
+    --hash=sha256:77a6201b69ce42e919f2fd9a559138d5410b5d8afff7c3a6b1f500b0481ff7d8 \
+    --hash=sha256:9f99786e0d62082a5b121b3437f3167562133711df22128de1e9886f57f0b226 \
+    --hash=sha256:ca9acc67f796aa2554fa3037dccc022a4b08b38b2ad153edfac9c9bb7cb1f3c6
+librt==0.16.0 ; platform_python_implementation != 'PyPy' \
+    --hash=sha256:001bfd59a7d45b17e3e75f2a8c6405280b35e7b84471792778e718c4f368950e \
+    --hash=sha256:0058f9d68721094105917254c72ac0569117bb7b13b9769cf45d26d89f9d21cd \
+    --hash=sha256:17bac7f7a16b328fff77e440287693eb017abde913595b5827ebccbc21ecd8a6 \
+    --hash=sha256:300c3ffdc459f4a779a8411ecb188e3ac0b1ff3a3a7b099642555dedae06c69b \
+    --hash=sha256:36e53948e99bbe3ffea257124cfcae1cfb01831555c9a9c903c9f9a72db7fd07 \
+    --hash=sha256:3ddeb3c9dedb461bb457c6c7d9aa7fbf35329da313d1a7543d00c8d0f3473c96 \
+    --hash=sha256:3e0c39bdc85370422e8b637be76eb1fd07d30967551b03e62267dd156f553152 \
+    --hash=sha256:4323193ac0cd025f85af531df8ba91bf24d1973b401697347a6282e8fd3fcf5e \
+    --hash=sha256:7e510b7770bee609617a3374a96548eb114cae048023e3f049ee449e7ff2db32 \
+    --hash=sha256:877698bf6bca5721d8be345f2fe09778e40ecadea8b58c73075f2b1a53666bf2 \
+    --hash=sha256:94aed6a8308818b91677957d1bd03188869cd7aeb23c5dba7912a6c0402f7602 \
+    --hash=sha256:a8afb6557920860b7a3a596eb804cf37e09e7cf8a803db2478c202acc72d8c2e \
+    --hash=sha256:be56ba9c884143495b517f23fe794ae367d58cd89ea0fdd6d437e3c024a87f9f \
+    --hash=sha256:ca8052401c55d7511dda6760719fda7618067e83535d7d0010096d216c34b667 \
+    --hash=sha256:f1e8591bd8a5a628cd7f07954c6a1592359a878bf032957a8e9057a41d644311 \
+    --hash=sha256:ff7baa55f8e7c69851419e50a666015d02a74198716fd45c0125a2112e0a389f
+mypy==2.4.0 \
+    --hash=sha256:20e9a5cd875837520c43db98dea0b6d0c2197833d95c30127d8f570fb9b1f00b \
+    --hash=sha256:29243242cf72582b65f9582ad9e56e8cb281566ed3519f4cd70bb8b9f2977e90 \
+    --hash=sha256:29eb0b9427a6b11b992e452f6cceb8af724f4dceb47e779d0b35e405e996ea5e \
+    --hash=sha256:3011537be6cf1de4511c0255a324362a812b58184bbe61e15f59c8b31033bd74 \
+    --hash=sha256:4209da39d85cf240f762af622d8180fcdfcb4727d021f44ade62d613a1a43324 \
+    --hash=sha256:6be721bd4bd57576193653b75b4af3461c9d0bf7dd8b528f782e9be210dc75bb \
+    --hash=sha256:7c4f8f8d1d1c0e2832d8ee7113dd08f6df6c7aad9e863fcbed9f25832be0b8c4 \
+    --hash=sha256:9f03a7828cca2b0adcd6662aee8f2711ff8830e1027641fdea3ab0b787483566 \
+    --hash=sha256:9fa247e02b505a45a2775f69df38d360d197e3790bc60f717595db9eda358b6e \
+    --hash=sha256:a96b07a49b7b1d025ce59c1b3acbcf24bead9a83da4523c4a6bde1bb94e7a0e1 \
+    --hash=sha256:d01c5d26a352acc6d5cf3128225477e1e8465e8d3029d4c345807fbf7f3cf093 \
+    --hash=sha256:e1fde197ae65be856a034a91b70ed747a16562ca69577785f06c661548424bf1 \
+    --hash=sha256:e3ebe2f72a2a1156065a9851570ffbf50c0a93cdccadef9c6e05c508a4fd10b1
+mypy-extensions==1.1.0 \
+    --hash=sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505
+pathspec==1.1.1 \
+    --hash=sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+# <<< mypy 2.4.0 <<<

@@ -1,0 +1,15 @@
+[
+  {
+    "cell": null,
+    "code": "unformatted",
+    "end_location": {"column": 1, "row": 4},
+    "filename": "@JOB@/src/demo/__init__.py",
+    "fix": {"applicability": "safe", "edits": [{"content": "x = 1\n", "end_location": {"column": 1, "row": 4}, "location": {"column": 1, "row": 3}}], "message": null},
+    "location": {"column": 1, "row": 3},
+    "message": "File would be reformatted",
+    "name": "unformatted",
+    "noqa_row": null,
+    "severity": "error",
+    "url": null
+  }
+]

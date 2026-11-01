@@ -1,0 +1,320 @@
+version: 2.1
+orbs:
+  # Your orb will be automatically injected here during the pipeline.
+  # Reference your orb's jobs and commands below as they will exist when built.
+  orb-tools: circleci/orb-tools@12.5
+  # The orb definition is intentionally not included here. It will be injected into the pipeline.
+  python-quality-orb: {}
+
+# Use this tag to ensure test jobs always run,
+# even though the downstream publish job will only run on release tags.
+filters: &filters
+  tags:
+    only: /.*/
+
+# Filter for release tags.
+release-filters: &release-filters
+  branches:
+    ignore: /.*/
+  tags:
+    only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
+
+commands:
+  # Checks every report under output_dir: SARIF against the OASIS SARIF 2.1.0 schema, pinned by
+  # SHA-256, JUnit's counts, and run records against schemas/run-record.v1.json.
+  validate-reports:
+    steps:
+      - run:
+          name: Validate the reports
+          command: bash tests/validate_reports.sh
+  # A fixture project copied to /tmp/<project>, with its environment in .venv (the project
+  # installed in it, with pytest and coverage.py), in a git repository with an origin.
+  project:
+    parameters:
+      fixture:
+        type: string
+    steps:
+      - run:
+          name: Make /tmp/<< parameters.fixture >> with its environment
+          environment:
+            FIXTURE: << parameters.fixture >>
+          command: |
+            cp -R "tests/fixtures/${FIXTURE}" "/tmp/${FIXTURE}"
+            cd "/tmp/${FIXTURE}"
+            python3 -m venv .venv
+            .venv/bin/python -m pip install --quiet -e . pytest==9.1.1 coverage==7.17.0
+            printf '.venv/\n__pycache__/\n' > .gitignore
+            git config --global user.name ci
+            git config --global user.email ci@example.com
+            git init -q --bare "/tmp/${FIXTURE}-origin.git"
+            git init -q
+            git checkout -q -b main
+            git add -A
+            git commit -qm "the project"
+            git remote add origin "/tmp/${FIXTURE}-origin.git"
+            git push -q origin main
+            git remote set-head origin main
+
+jobs:
+  # Every tool, with the default Python and the oldest the locks cover, on an image with no Python
+  # of its own the orb could use.
+  install-test:
+    parameters:
+      python:
+        type: string
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - python-quality-orb/install:
+          tools: ruff,ty,mypy,pyright,deptry,griffe,twine,check-wheel-contents
+          python: << parameters.python >>
+      - run:
+          name: Check the installs
+          environment:
+            PYTHON: << parameters.python >>
+          command: |
+            set -x
+            bin="${HOME}/.python-quality-orb/bin"
+            [[ "$(command -v ruff)" == "${bin}/ruff" ]]
+            ruff --version | grep -qx 'ruff 0.17.2'
+            ty --version | grep -q '^ty 0\.0\.91'
+            uv --version | grep -q '^uv 0\.13\.6'
+            # The binaries are the ones the checksum tables pin.
+            arch=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+            for entry in ruff:0.17.2 ty:0.0.91 uv:0.13.6; do
+                tool=${entry%%:*}
+                expected=$(grep -F "[\"${entry#*:}/${arch}\"]" "src/install/${tool}/install.sh" | cut -d'"' -f4)
+                [[ "$(sha512sum "${bin}/${tool}" | cut -d' ' -f1)" == "${expected}" ]]
+                jq -e '.verified == true' "${bin}/.${tool}.install.json"
+            done
+            mypy --version | grep -q '^mypy 2\.4\.0'
+            pyright --version | grep -q 'pyright 1\.1\.414'
+            griffe --version | grep -q '2\.4\.1'
+            twine --version | grep -q 'twine version 7\.0\.0'
+            check-wheel-contents --version | grep -q '0\.6\.3'
+            for tool in mypy pyright deptry griffe twine check-wheel-contents; do
+                jq -e --arg python "${PYTHON}" '.verified == true and (.python.version | startswith($python + "."))' \
+                    "${bin}/.${tool}.install.json"
+                # Each runs on its own environment's Python, isolated from the job's.
+                grep -q " -I -m " "${bin}/${tool}"
+            done
+      # A second install takes the verified releases from the cache.
+      - python-quality-orb/install:
+          tools: ruff,ty
+  # Versions the tables and locks don't list fail closed before anything is downloaded;
+  # known_versions installs them unverified.
+  checksum-test:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - python-quality-orb/install_uv
+      - run:
+          name: Unlisted releases fail closed
+          command: |
+            for install in install_ruff:0.15.0 install_ty:0.0.80 install_uv:0.12.0 install_mypy:1.18.2; do
+                if bash tests/run_command.sh "${install%%:*}" "version=${install#*:}" > /tmp/install.log 2>&1; then
+                    cat /tmp/install.log
+                    echo "${install} was installed."
+                    exit 1
+                fi
+                cat /tmp/install.log
+                grep -q 'ERROR: ' /tmp/install.log
+            done
+      - python-quality-orb/install_ruff:
+          version: 0.15.0
+          verify_checksums: known_versions
+          install_path: ~/unverified
+      - run:
+          name: known_versions installs it unverified
+          command: |
+            ~/unverified/ruff --version | grep -qx 'ruff 0.15.0'
+            jq -e '.verified == false and .verify_checksums == "known_versions"' ~/unverified/.ruff.install.json
+  # The release binaries on Arm, and the checks that need no project environment.
+  arm64-test:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: arm.medium
+    steps:
+      - checkout
+      - python-quality-orb/install:
+          tools: ruff,ty,mypy
+      - python-quality-orb/fmt:
+          working_dir: tests/fixtures/clean
+      - python-quality-orb/lint:
+          working_dir: tests/fixtures/clean
+      - python-quality-orb/mypy:
+          working_dir: tests/fixtures/clean
+          environment: ""
+      - python-quality-orb/ty:
+          working_dir: tests/fixtures/clean
+          environment: ""
+  # Every check passes on the clean project, with the real tools, and leaves its checkout as it was.
+  checks-test:
+    docker:
+      - image: cimg/python:3.13
+    steps:
+      - checkout
+      - python-quality-orb/install:
+          tools: ruff,ty,uv,mypy,pyright,deptry,griffe,twine,check-wheel-contents
+      - project:
+          fixture: clean
+      - python-quality-orb/fmt:
+          working_dir: /tmp/clean
+          run_record: true
+      - python-quality-orb/lint:
+          working_dir: /tmp/clean
+          run_record: true
+      - python-quality-orb/mypy:
+          working_dir: /tmp/clean
+          run_record: true
+      - python-quality-orb/pyright:
+          working_dir: /tmp/clean
+          run_record: true
+      - python-quality-orb/ty:
+          working_dir: /tmp/clean
+          run_record: true
+      - python-quality-orb/test:
+          working_dir: /tmp/clean
+          coverage: true
+          coverage_min: "100"
+          run_record: true
+      - python-quality-orb/deps:
+          working_dir: /tmp/clean
+          run_record: true
+      - python-quality-orb/api_compat:
+          working_dir: /tmp/clean
+          run_record: true
+      - python-quality-orb/package:
+          working_dir: /tmp/clean
+          run_record: true
+      - run:
+          name: Check the results, and that the checkout is unchanged
+          command: |
+            set -x
+            reports=/tmp/python-quality-reports
+            jq -e 'length == 0' "${reports}/fmt.json" "${reports}/lint.json" "${reports}/deps.json" "${reports}/api_compat.json"
+            jq -e '[.[] | select(.finding)] | length == 0' "${reports}/mypy.json" "${reports}/pyright.json" "${reports}/ty.json"
+            jq -e '.tests == 2 and .failures == 0 and .coverage.covered == .coverage.total' "${reports}/test.json"
+            jq -e '.target.environment.python | endswith("/.venv/bin/python")' "${reports}/mypy.run-record.json"
+            ls "${reports}/package-dist/"cleanpkg-1.0.0.tar.gz "${reports}/package-dist/"cleanpkg-1.0.0-py3-none-any.whl
+            cd /tmp/clean
+            [[ -z "$(git status --porcelain)" ]]
+      - validate-reports
+  # Every check finds what the dirty project holds: report_only reports it, and by default it fails
+  # the step. api_compat finds the API changes of a branch of the clean project.
+  findings-test:
+    docker:
+      - image: cimg/python:3.13
+    steps:
+      - checkout
+      - python-quality-orb/install:
+          tools: ruff,ty,uv,mypy,pyright,deptry,griffe,twine,check-wheel-contents
+      - project:
+          fixture: dirty
+      - project:
+          fixture: clean
+      - run:
+          name: Make a branch of the clean project that breaks its API
+          command: |
+            cp tests/fixtures/api-break/__init__.py /tmp/clean/src/cleanpkg/__init__.py
+            cd /tmp/clean
+            git checkout -q -b change
+            git commit -qam "a change that breaks callers"
+      - python-quality-orb/fmt:
+          working_dir: /tmp/dirty
+          report_only: true
+      - python-quality-orb/lint:
+          working_dir: /tmp/dirty
+          report_only: true
+      - python-quality-orb/mypy:
+          working_dir: /tmp/dirty
+          report_only: true
+      - python-quality-orb/pyright:
+          working_dir: /tmp/dirty
+          report_only: true
+      - python-quality-orb/ty:
+          working_dir: /tmp/dirty
+          report_only: true
+      - python-quality-orb/deps:
+          working_dir: /tmp/dirty
+          report_only: true
+      - python-quality-orb/package:
+          working_dir: /tmp/dirty
+          report_only: true
+      - python-quality-orb/api_compat:
+          working_dir: /tmp/clean
+          report_only: true
+          run_record: true
+      - run:
+          name: Check what report_only reported
+          command: |
+            set -x
+            reports=/tmp/python-quality-reports
+            jq -e '[.[] | select(.kind == "unformatted") | .path] == ["src/dirtypkg/calc.py"]' "${reports}/fmt.json"
+            jq -e 'any(.[]; .rule == "F401" and .path == "src/dirtypkg/calc.py")' "${reports}/lint.json"
+            jq -e 'any(.[]; .rule == "return-value") and any(.[]; .rule == "import-not-found")' "${reports}/mypy.json"
+            jq -e 'any(.[]; .rule == "reportReturnType") and any(.[]; .rule == "reportMissingImports")' "${reports}/pyright.json"
+            jq -e 'any(.[]; .rule == "invalid-return-type" and .finding) and any(.[]; .rule == "unresolved-import")' "${reports}/ty.json"
+            jq -e '[.[].rule] | sort == ["DEP001", "DEP002"]' "${reports}/deps.json"
+            jq -e '[.[] | select(.tool == "twine")] | length == 2' "${reports}/package.json"
+            jq -e 'any(.[]; .tool == "check-wheel-contents")' "${reports}/package.json"
+            jq -e '[.[].rule] | sort == ["parameter_added_required", "parameter_removed"]' "${reports}/api_compat.json"
+            jq -e '.target.base.ref == "origin/main"' "${reports}/api_compat.run-record.json"
+      - run:
+          name: By default each check fails the step
+          command: |
+            for check in fmt lint mypy pyright ty deps package test; do
+                if bash tests/run_command.sh "${check}" working_dir=/tmp/dirty output_dir=/tmp/failing \
+                    > "/tmp/${check}.log" 2>&1; then
+                    cat "/tmp/${check}.log"
+                    echo "${check} passed on the dirty project."
+                    exit 1
+                fi
+                tail -n 5 "/tmp/${check}.log"
+                grep -q '^ERROR: ' "/tmp/${check}.log"
+            done
+            if bash tests/run_command.sh api_compat working_dir=/tmp/clean output_dir=/tmp/failing > /tmp/api.log 2>&1; then
+                cat /tmp/api.log
+                echo "api_compat passed a change that breaks callers."
+                exit 1
+            fi
+            # A failing test is a finding, not a run that couldn't complete.
+            grep -q '1 test failed or errored' /tmp/test.log
+      - validate-reports
+
+workflows:
+  test-deploy:
+    jobs:
+      # Make sure to include "filters: *filters" in every test job you want to run as part of your deployment.
+      - install-test:
+          matrix:
+            parameters:
+              python: ["3.11", "3.14"]
+          filters: *filters
+      - checksum-test:
+          filters: *filters
+      - arm64-test:
+          filters: *filters
+      - checks-test:
+          filters: *filters
+      - findings-test:
+          filters: *filters
+      # The orb must be re-packed for publishing, and saved to the workspace.
+      - orb-tools/pack:
+          filters: *release-filters
+      - orb-tools/publish:
+          orb_name: juburr/python-quality-orb
+          vcs_type: << pipeline.project.type >>
+          pub_type: production
+          # Ensure this job requires all test jobs and the pack job.
+          requires:
+            - orb-tools/pack
+            - install-test
+            - checksum-test
+            - arm64-test
+            - checks-test
+            - findings-test
+          context: orb-publishing
+          filters: *release-filters

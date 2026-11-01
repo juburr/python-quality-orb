@@ -1,0 +1,130 @@
+description: >
+  Builds a Python project's distributions with uv build (the sdist, then the
+  wheel from it, as installers build it) and checks them: twine check
+  --strict reads each one's metadata and renders its description as PyPI
+  would, and check-wheel-contents finds mistakes in a wheel's files, such as
+  compiled files, duplicate or missing modules, or stray top-level files.
+  dists checks distributions built earlier instead. A distribution either
+  rejects is a finding, which fails the step unless report_only is true; a
+  build that fails, or a check that couldn't run, fails it either way. Run
+  install (tools: uv, twine, check-wheel-contents) first.
+parameters:
+  working_dir:
+    type: string
+    default: "."
+    description: The project's root, to build in. dists and out_dir are relative to it.
+  dists:
+    type: string
+    default: ""
+    description: >
+      Distributions built earlier to check instead of building, separated by
+      commas or spaces, each a path or a glob such as dist/*. Each must
+      exist. Leave empty to build with uv. Environment variables are
+      expanded.
+  out_dir:
+    type: string
+    default: ""
+    description: >
+      The directory to keep the distributions built in, such as dist, for a
+      later publish step. Leave empty to keep them with the reports, in
+      output_dir/<report_name>-dist. Environment variables are expanded.
+  no_sources:
+    type: boolean
+    default: true
+    description: >
+      Build without the [tool.uv.sources] of pyproject.toml (uv build
+      --no-sources), as anyone who installs the sdist builds it, so a
+      dependency that only resolves through a local or Git source fails
+      here.
+  twine:
+    type: boolean
+    default: true
+    description: Check every distribution with twine check --strict.
+  check_wheel_contents:
+    type: boolean
+    default: true
+    description: Check every wheel with check-wheel-contents.
+  check_wheel_contents_args:
+    type: string
+    default: ""
+    description: >
+      Options for check-wheel-contents, such as --ignore=W002 or
+      --toplevel=mypackage. Its configuration ([tool.check-wheel-contents]
+      in pyproject.toml) also applies. Environment variables are expanded.
+  extra_args:
+    type: string
+    default: ""
+    description: >
+      Further options for uv build, such as --python=3.12 or
+      --config-setting=KEY=VALUE. They are split like shell words, but
+      nothing in them is expanded or run. Options the command sets itself,
+      and those that would build one kind of distribution, elsewhere, or
+      another package, are refused. Environment variables are expanded.
+  report_name:
+    type: string
+    default: package
+    description: >
+      The reports' file name without its extension: <report_name>.json (the
+      problems found, by distribution). Letters, digits, '.', '_' and '-'.
+  output_dir:
+    type: string
+    default: /tmp/python-quality-reports
+    description: >
+      Absolute path of the directory to write the reports into. Environment
+      variables are not expanded, since the path is also passed to
+      store_artifacts and store_test_results.
+  junit:
+    type: boolean
+    default: true
+    description: >
+      Write the findings as JUnit (output_dir/junit/<report_name>.xml), and
+      store it with store_test_results for CircleCI's Tests tab.
+  run_record:
+    type: boolean
+    default: false
+    description: >
+      Also write a run record (<report_name>.run-record.json): what was
+      checked, with which tool and settings, and what it found.
+  report_only:
+    type: boolean
+    default: false
+    description: >
+      Report findings without failing the step, to adopt the check
+      gradually. A check that couldn't run, or that checked nothing, still
+      fails it.
+  store_artifacts:
+    type: boolean
+    default: true
+    description: Store output_dir as job artifacts under python-quality-reports/, including when the step fails.
+steps:
+  - run:
+      name: package (<< parameters.report_name >>)
+      working_directory: << parameters.working_dir >>
+      environment:
+        PARAM_CHECK_WHEEL_CONTENTS: << parameters.check_wheel_contents >>
+        PARAM_CHECK_WHEEL_CONTENTS_ARGS: << parameters.check_wheel_contents_args >>
+        PARAM_DISTS: << parameters.dists >>
+        PARAM_EXTRA_ARGS: << parameters.extra_args >>
+        PARAM_JUNIT: << parameters.junit >>
+        PARAM_NO_SOURCES: << parameters.no_sources >>
+        PARAM_OUT_DIR: << parameters.out_dir >>
+        PARAM_OUTPUT_DIR: << parameters.output_dir >>
+        PARAM_REPORT_NAME: << parameters.report_name >>
+        PARAM_REPORT_ONLY: << parameters.report_only >>
+        PARAM_RUN_RECORD: << parameters.run_record >>
+        PARAM_TWINE: << parameters.twine >>
+        SCRIPT_PYTHON_QUALITY_LIB: << include(scripts/lib/python_quality.sh) >>
+      command: << include(scripts/package.sh) >>
+  - when:
+      condition: << parameters.junit >>
+      steps:
+        - store_test_results:
+            path: << parameters.output_dir >>/junit/<< parameters.report_name >>.xml
+            when: always
+  - when:
+      condition: << parameters.store_artifacts >>
+      steps:
+        - store_artifacts:
+            path: << parameters.output_dir >>
+            destination: python-quality-reports
+            when: always

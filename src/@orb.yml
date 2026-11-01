@@ -1,0 +1,16 @@
+version: 2.1
+
+description: >
+  Hold Python code to a standard on every commit: format and lint it with
+  Ruff, type-check it with mypy, Pyright or ty, run its tests with pytest
+  and coverage in the project's own environment, find missing and unused
+  dependencies with deptry, catch API changes that break callers with
+  Griffe, and check built distributions with twine and check-wheel-contents.
+  Every tool is installed checksum-verified, from release binaries or
+  hash-pinned locks. JSON, SARIF and JUnit reports, run records, and a gate
+  that never passes a check that couldn't run. Every command has a GitHub
+  Action of the same name.
+
+display:
+  home_url: "https://github.com/juburr/python-quality-orb"
+  source_url: "https://github.com/juburr/python-quality-orb"

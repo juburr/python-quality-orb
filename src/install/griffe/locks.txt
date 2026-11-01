@@ -1,0 +1,23 @@
+# The griffe releases install_griffe installs with verify_checksums: strict,
+# newest first, each as a requirements file that pins griffe and every
+# dependency to one version with the SHA-256 of each wheel the orb can install
+# (CPython 3.11 to 3.14 on Linux x86_64 and aarch64, glibc or musl). uv
+# installs a block with --require-hashes, so a file whose hash isn't listed, or
+# a package the block doesn't pin, fails the install before anything runs.
+# griffe is a meta-package over griffelib and griffecli.
+#
+# Add a release with:
+#   src/install/lock.sh -t griffe -v <version>
+# and paste its output at the top.
+
+# >>> griffe 2.4.1 >>>
+# griffe==2.4.1, resolved by uv 0.11.32 (x86_64-unknown-linux-gnu) from releases uploaded before 2026-10-24T00:00:00Z.
+colorama==0.4.6 \
+    --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
+griffe==2.4.1 \
+    --hash=sha256:ca58ccdb1d8590ad062fad837a875dd704f94acf7a0104795a098a991ceaf728
+griffecli==2.4.1 \
+    --hash=sha256:1678938e7b75a0aa34d3e408d550707a192f5297c3005aa0f92660648c30bc0a
+griffelib==2.4.1 \
+    --hash=sha256:76bc562f936ad1ce198d2cf6d0731bd5c92a7d934b69ef828ef22ee0ffdb62ce
+# <<< griffe 2.4.1 <<<

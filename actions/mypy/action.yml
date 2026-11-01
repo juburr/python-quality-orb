@@ -1,0 +1,119 @@
+name: Type-check Python with mypy
+description: >
+  Type-checks Python code with mypy, against the packages installed in the
+  project's environment, and the environment's Python version unless mypy's
+  configuration sets python_version. Errors are findings, which fail the step
+  unless report_only is true; notes are reported; a run mypy stopped (a syntax
+  error, a configuration or plugin it can't use, no files) fails it either way.
+  Writes the findings as JSON, SARIF and JUnit. Run the install action (tools:
+  mypy) first, or set runner to project. The GitHub Actions twin of the orb's
+  mypy command.
+author: juburr
+
+inputs:
+  working_dir:
+    description: >
+      The directory to run in. paths, environment and config are relative to it.
+    default: .
+  paths:
+    description: >
+      The files and directories to check, separated by commas or spaces. Leave empty
+      for the files in mypy's configuration (files, packages or modules), or else
+      the working directory.
+    default: ""
+  environment:
+    description: >
+      The project's environment, with its dependencies installed: a directory such
+      as .venv, or an interpreter such as .venv/bin/python, relative to the working
+      directory. Create it in an earlier step, such as with uv sync, poetry install,
+      or python -m venv and pip install.
+    default: .venv
+  config:
+    description: >
+      A mypy configuration file to use instead of the one mypy finds (mypy.ini,
+      .mypy.ini, [tool.mypy] in pyproject.toml, [mypy] in setup.cfg).
+    default: ""
+  runner:
+    description: >
+      orb runs the mypy this orb's install verified, told where the project's
+      environment is. project runs the mypy installed in the project's environment,
+      which a configuration that loads plugins (such as pydantic.mypy or the Django
+      stubs' plugin) needs, since plugins are imported into mypy's own process.
+    default: orb
+  extra_args:
+    description: >
+      Further options for mypy, such as --strict or --exclude=build/. They are split
+      like shell words, but nothing in them is expanded or run. Options the command
+      sets itself, and those that would change the output it reads, check code given
+      as text or install packages, are refused.
+    default: ""
+  report_name:
+    description: >
+      The reports' file name without its extension: <report_name>.json (mypy's
+      errors and notes) and <report_name>.sarif. Letters, digits, '.', '_' and '-'.
+    default: mypy
+  output_dir:
+    description: >
+      Absolute path of the directory to write the reports into.
+    default: /tmp/python-quality-reports
+  junit:
+    description: >
+      Write the findings as JUnit (output_dir/junit/<report_name>.xml).
+    default: "true"
+  run_record:
+    description: >
+      Also write a run record (<report_name>.run-record.json): what was checked,
+      with which tool and settings, and what it found.
+    default: "false"
+  report_only:
+    description: >
+      Report findings without failing the step, to adopt the check gradually. A
+      check that couldn't run, or that checked nothing, still fails it.
+    default: "false"
+  store_artifacts:
+    description: >
+      Upload output_dir as a workflow artifact named
+      python-quality-reports-<report_name>-<random>, including when the step fails.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Artifact names must be unique in a workflow run, and the same command
+    # can run in several jobs or matrix legs, so the name ends in a random
+    # suffix.
+    - name: Name the reports artifact
+      id: artifact
+      if: (inputs.store_artifacts == 'true' || inputs.store_artifacts == '1')
+      shell: bash
+      env:
+        REPORT_NAME: ${{ inputs.report_name }}
+      run: |
+        if [[ ! "${REPORT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            REPORT_NAME=reports
+        fi
+        printf 'name=python-quality-reports-%s-%s\n' "${REPORT_NAME}" "$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')" >> "${GITHUB_OUTPUT}"
+    - name: mypy
+      shell: bash
+      working-directory: ${{ inputs.working_dir }}
+      env:
+        PARAM_CONFIG: ${{ inputs.config }}
+        PARAM_ENVIRONMENT: ${{ inputs.environment }}
+        PARAM_EXTRA_ARGS: ${{ inputs.extra_args }}
+        PARAM_JUNIT: ${{ inputs.junit }}
+        PARAM_OUTPUT_DIR: ${{ inputs.output_dir }}
+        PARAM_PATHS: ${{ inputs.paths }}
+        PARAM_REPORT_NAME: ${{ inputs.report_name }}
+        PARAM_REPORT_ONLY: ${{ inputs.report_only }}
+        PARAM_RUNNER: ${{ inputs.runner }}
+        PARAM_RUN_RECORD: ${{ inputs.run_record }}
+      run: >-
+        bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/mypy.sh"
+        "SCRIPT_PYTHON_QUALITY_LIB=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.sh" "SCRIPT_PYTHON_QUALITY_PY=${GITHUB_ACTION_PATH}/../../src/scripts/lib/python_quality.py"
+    - name: Upload the reports
+      if: always() && (inputs.store_artifacts == 'true' || inputs.store_artifacts == '1')
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: ${{ inputs.output_dir }}
+        if-no-files-found: ignore
