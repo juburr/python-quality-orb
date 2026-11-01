@@ -254,8 +254,11 @@ jobs:
             reports=/tmp/python-quality-reports
             jq -e '[.[] | select(.kind == "unformatted") | .path] == ["src/dirtypkg/calc.py"]' "${reports}/fmt.json"
             jq -e 'any(.[]; .rule == "F401" and .path == "src/dirtypkg/calc.py")' "${reports}/lint.json"
-            jq -e 'any(.[]; .rule == "return-value") and any(.[]; .rule == "import-not-found")' "${reports}/mypy.json"
-            jq -e 'any(.[]; .rule == "reportReturnType") and any(.[]; .rule == "reportMissingImports")' "${reports}/pyright.json"
+            # yaml isn't installed. mypy knows its stub package, types-PyYAML, so it reports the import as
+            # import-untyped ("Library stubs not installed"); Pyright bundles yaml's stubs, so it reports the
+            # missing source as reportMissingModuleSource; ty reports unresolved-import.
+            jq -e 'any(.[]; .rule == "return-value") and any(.[]; .rule == "import-untyped")' "${reports}/mypy.json"
+            jq -e 'any(.[]; .rule == "reportReturnType") and any(.[]; .rule == "reportMissingModuleSource")' "${reports}/pyright.json"
             jq -e 'any(.[]; .rule == "invalid-return-type" and .finding) and any(.[]; .rule == "unresolved-import")' "${reports}/ty.json"
             jq -e '[.[].rule] | sort == ["DEP001", "DEP002"]' "${reports}/deps.json"
             jq -e '[.[] | select(.tool == "twine")] | length == 2' "${reports}/package.json"
