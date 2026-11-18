@@ -103,7 +103,7 @@ flowchart LR
 version: 2.1
 
 orbs:
-  python-quality: juburr/python-quality-orb@0.1.0
+  python-quality: juburr/python-quality-orb@0.2.0
 
 jobs:
   quality:
@@ -144,14 +144,14 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v7
-      - uses: juburr/python-quality-orb/actions/install@v0.1.0
+      - uses: juburr/python-quality-orb/actions/install@v0.2.0
         with:
           tools: ruff,ty,uv
       - run: uv sync
-      - uses: juburr/python-quality-orb/actions/fmt@v0.1.0
-      - uses: juburr/python-quality-orb/actions/lint@v0.1.0
-      - uses: juburr/python-quality-orb/actions/ty@v0.1.0
-      - uses: juburr/python-quality-orb/actions/test@v0.1.0
+      - uses: juburr/python-quality-orb/actions/fmt@v0.2.0
+      - uses: juburr/python-quality-orb/actions/lint@v0.2.0
+      - uses: juburr/python-quality-orb/actions/ty@v0.2.0
+      - uses: juburr/python-quality-orb/actions/test@v0.2.0
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
@@ -284,7 +284,7 @@ Every parameter that names a value expands environment variables, except `output
 | `python` | `3.14` | The Python the locked tools run on: `3.11` to `3.14` for a CPython uv downloads, `system`, or an interpreter's absolute path. It isn't your project's Python |
 | `index_url` | `https://pypi.org/simple` | The package index to install the locked tools from |
 | `python_install_mirror` | | A mirror of uv's Python downloads, `https://` or `file://` |
-| `download_base_url` | | A mirror of GitHub Releases, in place of `https://github.com` |
+| `download_base_url` | | A mirror of GitHub Releases, in place of `https://github.com`. A mirror that needs a login gets the `.netrc` entry for its host; see [Mirrors That Need a Login](#-mirrors-that-need-a-login). |
 | `caching` | `true` | Cache the verified releases and the Python archive between jobs |
 | `install_path` | `~/.python-quality-orb/bin` | Where the tools go, added to the `PATH` ahead of any an image or `.venv` ships |
 | `verify_checksums` | `strict` | `strict`, `known_versions` or `false` (see [Checksum Verification](#-checksum-verification)) |
@@ -296,7 +296,7 @@ Every parameter that names a value expands environment variables, except `output
 | `version` | `0.17.2` | The Ruff release, from 0.16.0 |
 | `verify_checksums` | `strict` | `strict`, `known_versions` or `false` |
 | `install_path` | `~/.python-quality-orb/bin` | Directory for `ruff`, added to the `PATH` |
-| `download_base_url` | | An https mirror of GitHub Releases |
+| `download_base_url` | | An https mirror of GitHub Releases. A mirror that needs a login gets the `.netrc` entry for its host; see [Mirrors That Need a Login](#-mirrors-that-need-a-login). |
 | `caching` | `true` | Cache the verified release between jobs |
 
 ### `python-quality/install_ty`
@@ -451,26 +451,26 @@ Every command has a composite action of the same name, with the same inputs and 
 
 | Action | Command |
 |---|---|
-| `juburr/python-quality-orb/actions/install@v0.1.0` | `install` |
-| `juburr/python-quality-orb/actions/install_ruff@v0.1.0` | `install_ruff` |
-| `juburr/python-quality-orb/actions/install_ty@v0.1.0` | `install_ty` |
-| `juburr/python-quality-orb/actions/install_uv@v0.1.0` | `install_uv` |
-| `juburr/python-quality-orb/actions/install_python@v0.1.0` | `install_python` |
-| `juburr/python-quality-orb/actions/install_mypy@v0.1.0` | `install_mypy` |
-| `juburr/python-quality-orb/actions/install_pyright@v0.1.0` | `install_pyright` |
-| `juburr/python-quality-orb/actions/install_deptry@v0.1.0` | `install_deptry` |
-| `juburr/python-quality-orb/actions/install_griffe@v0.1.0` | `install_griffe` |
-| `juburr/python-quality-orb/actions/install_twine@v0.1.0` | `install_twine` |
-| `juburr/python-quality-orb/actions/install_check_wheel_contents@v0.1.0` | `install_check_wheel_contents` |
-| `juburr/python-quality-orb/actions/fmt@v0.1.0` | `fmt` |
-| `juburr/python-quality-orb/actions/lint@v0.1.0` | `lint` |
-| `juburr/python-quality-orb/actions/mypy@v0.1.0` | `mypy` |
-| `juburr/python-quality-orb/actions/pyright@v0.1.0` | `pyright` |
-| `juburr/python-quality-orb/actions/ty@v0.1.0` | `ty` |
-| `juburr/python-quality-orb/actions/test@v0.1.0` | `test` |
-| `juburr/python-quality-orb/actions/deps@v0.1.0` | `deps` |
-| `juburr/python-quality-orb/actions/api_compat@v0.1.0` | `api_compat` |
-| `juburr/python-quality-orb/actions/package@v0.1.0` | `package` |
+| `juburr/python-quality-orb/actions/install@v0.2.0` | `install` |
+| `juburr/python-quality-orb/actions/install_ruff@v0.2.0` | `install_ruff` |
+| `juburr/python-quality-orb/actions/install_ty@v0.2.0` | `install_ty` |
+| `juburr/python-quality-orb/actions/install_uv@v0.2.0` | `install_uv` |
+| `juburr/python-quality-orb/actions/install_python@v0.2.0` | `install_python` |
+| `juburr/python-quality-orb/actions/install_mypy@v0.2.0` | `install_mypy` |
+| `juburr/python-quality-orb/actions/install_pyright@v0.2.0` | `install_pyright` |
+| `juburr/python-quality-orb/actions/install_deptry@v0.2.0` | `install_deptry` |
+| `juburr/python-quality-orb/actions/install_griffe@v0.2.0` | `install_griffe` |
+| `juburr/python-quality-orb/actions/install_twine@v0.2.0` | `install_twine` |
+| `juburr/python-quality-orb/actions/install_check_wheel_contents@v0.2.0` | `install_check_wheel_contents` |
+| `juburr/python-quality-orb/actions/fmt@v0.2.0` | `fmt` |
+| `juburr/python-quality-orb/actions/lint@v0.2.0` | `lint` |
+| `juburr/python-quality-orb/actions/mypy@v0.2.0` | `mypy` |
+| `juburr/python-quality-orb/actions/pyright@v0.2.0` | `pyright` |
+| `juburr/python-quality-orb/actions/ty@v0.2.0` | `ty` |
+| `juburr/python-quality-orb/actions/test@v0.2.0` | `test` |
+| `juburr/python-quality-orb/actions/deps@v0.2.0` | `deps` |
+| `juburr/python-quality-orb/actions/api_compat@v0.2.0` | `api_compat` |
+| `juburr/python-quality-orb/actions/package@v0.2.0` | `package` |
 
 What one action exports, later steps see, as with CircleCI's `BASH_ENV`. A few differences:
 
@@ -480,7 +480,7 @@ What one action exports, later steps see, as with CircleCI's `BASH_ENV`. A few d
 - **The reports are uploaded as an artifact** named `python-quality-reports-<report_name>-<random>`. JUnit stays in `output_dir/junit/` for a test reporter action.
 - **`split_tests` has no effect**: split with a matrix and `paths` instead.
 - **The install actions cache with `actions/cache`**, keyed as on CircleCI.
-- **Pin the actions to a commit SHA** for the strongest guarantee: `juburr/python-quality-orb/actions/lint@<sha> # v0.1.0`.
+- **Pin the actions to a commit SHA** for the strongest guarantee: `juburr/python-quality-orb/actions/lint@<sha> # v0.2.0`.
 
 ## 🔒 Secure by Design
 
@@ -497,6 +497,30 @@ What one action exports, later steps see, as with CircleCI's `BASH_ENV`. A few d
 - **Your project.** Its environment can be any Python 3 the checks support: mypy, Pyright and ty check any version they know, `test` runs any pytest, and `deps` needs 3.10 or newer.
 - **The tools.** Ruff, ty and uv are static musl builds and run on any Linux. The locked tools run on CPython 3.11 to 3.14, glibc or musl.
 - **CI.** CircleCI tests every command with the real tools, and the installs on amd64 and arm64; GitHub Actions tests every action the same way.
+
+## 🔑 Mirrors That Need a Login
+
+`download_base_url` points the install at an internal mirror, such as an Artifactory remote repository. When the mirror needs a login, the install takes it from the entry for the mirror's host in the `.netrc` file (`NETRC`, or `~/.netrc`), which an earlier step writes, such as from a context's variables. Artifactory takes an access token as the password.
+
+```yaml
+- run:
+    name: Log In to the Mirror
+    command: |
+      umask 077
+      printf 'machine %s login %s password %s\n' artifactory.example.com "${ARTIFACTORY_USER}" "${ARTIFACTORY_TOKEN}" >> ~/.netrc
+```
+
+`printf` is a shell builtin, so the token never reaches a command line.
+
+How the login is kept to the mirror:
+
+- **One entry, in a private file.** The install copies the first complete entry for the mirror's host, alone, into a file only the job's user can read, and gives that file to curl. curl never reads the rest of your `.netrc`: not a `default` entry, not an entry without a password (curl 7.76.0 to 8.11.1 could send a password on to a host the server redirects to, CVE-2024-11053 and CVE-2025-0167, when the `.netrc` held either), and not a token for another host, such as `github.com`.
+- **Only for the mirror.** curl gets the file only for URLs under the mirror. Downloads from anywhere else get no login.
+- **Never past a redirect.** When the mirror redirects a download to another host, such as the cloud storage an Artifactory keeps its files in, that host gets no login, even when a `~/.curlrc` says `location-trusted`.
+- **curl only.** wget reads every entry in `~/.netrc` and can't be limited to one, so an install that would send a mirror login with wget fails and asks for curl.
+- **Out of the log.** The log names the `.netrc` file and the host, never the login. A `.netrc` other users can read is reported.
+
+An entry the install can't use as curl would, one without a login or password or with a quoted value, is reported, and the mirror is then asked without a login. A mirror that refuses a download without one is reported with the entry it needs.
 
 ## 🔐 Checksum Verification
 
