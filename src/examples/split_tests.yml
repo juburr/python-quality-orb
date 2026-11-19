@@ -5,7 +5,7 @@ description: >
 usage:
   version: 2.1
   orbs:
-    python-quality: juburr/python-quality-orb@0.1.0
+    python-quality: juburr/python-quality-orb@0.2.0
   jobs:
     test:
       parallelism: 4
